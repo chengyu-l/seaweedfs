@@ -2,19 +2,17 @@ package command
 
 import (
 	"fmt"
+	raftflags "github.com/seaweedfs/seaweedfs/weed/raftstore/pkg/flags"
+	"github.com/seaweedfs/seaweedfs/weed/raftstore/raftrelay"
+	"github.com/soheilhy/cmux"
 	"net/http"
 	"os"
-	"path"
 	"strings"
 	"time"
-
-	hashicorpRaft "github.com/hashicorp/raft"
 
 	"golang.org/x/exp/slices"
 
 	"github.com/gorilla/mux"
-	"github.com/seaweedfs/raft/protobuf"
-	"github.com/spf13/viper"
 	"google.golang.org/grpc/reflection"
 
 	stats_collect "github.com/seaweedfs/seaweedfs/weed/stats"
@@ -56,6 +54,15 @@ type MasterOptions struct {
 	electionTimeout    *time.Duration
 	raftHashicorp      *bool
 	raftBootstrap      *bool
+
+	// nebulas
+	clusterId      *string
+	name           *string
+	LPUrls         *string
+	LogOutputs     *string
+	LogLevel       *string
+	InitialCluster *string
+	ClusterState   *string
 }
 
 func init() {
@@ -81,6 +88,14 @@ func init() {
 	m.electionTimeout = cmdMaster.Flag.Duration("electionTimeout", 10*time.Second, "election timeout of master servers")
 	m.raftHashicorp = cmdMaster.Flag.Bool("raftHashicorp", false, "use hashicorp raft")
 	m.raftBootstrap = cmdMaster.Flag.Bool("raftBootstrap", false, "Whether to bootstrap the Raft cluster")
+
+	m.clusterId = cmdMaster.Flag.String("cluster", "", "cluster id")
+	m.LogOutputs = cmdMaster.Flag.String("raftLog-outputs", "", "Specify 'stdout' or 'stderr' to skip journald logging even when running under systemd, or list of comma separated output targets.")
+	m.LogLevel = cmdMaster.Flag.String("raftLog-level", "", "Configures log level for raft. Only supports debug, info, warn, error, panic, or fatal. Default 'info'.")
+	m.name = cmdMaster.Flag.String("name", "", "Human-readable name for this member.")
+	m.LPUrls = cmdMaster.Flag.String("listen-peer-urls", "", "List of URLs to listen on for peer traffic.")
+	m.InitialCluster = cmdMaster.Flag.String("initial-cluster", "", "Initial cluster configuration for bootstrapping.")
+	m.ClusterState = cmdMaster.Flag.String("initial-cluster-state", "", "Initial cluster state ('new' or 'existing').")
 }
 
 var cmdMaster = &Command{
@@ -130,14 +145,11 @@ func startMaster(masterOption MasterOptions, masterWhiteList []string) {
 
 	backend.LoadConfiguration(util.GetViper())
 
-	if *masterOption.portGrpc == 0 {
-		*masterOption.portGrpc = 10000 + *masterOption.port
-	}
 	if *masterOption.ipBind == "" {
 		*masterOption.ipBind = *masterOption.ip
 	}
 
-	myMasterAddress, peers := checkPeers(*masterOption.ip, *masterOption.port, *masterOption.portGrpc, *masterOption.peers)
+	_, peers := checkPeers(*masterOption.ip, *masterOption.port, *masterOption.portGrpc, *masterOption.peers)
 
 	masterPeers := make(map[string]pb.ServerAddress)
 	for _, peer := range peers {
@@ -146,123 +158,52 @@ func startMaster(masterOption MasterOptions, masterWhiteList []string) {
 
 	r := mux.NewRouter()
 	ms := weed_server.NewMasterServer(r, masterOption.toMasterOption(masterWhiteList), masterPeers)
+
+	raftOpt, _ := masterOption.GetRaftLaunchConfig()
+	raftRelay := weed_server.NewRaftRelay(r, *masterOption.clusterId, ms.Topo, raftOpt)
+	ms.SetRaftServer(raftRelay)
+
+	r.HandleFunc("/cluster/status", raftRelay.StatusHandler).Methods("GET")
+	r.HandleFunc("/cluster/healthz", raftRelay.HealthzHandler).Methods("GET", "HEAD")
+	if *masterOption.raftHashicorp {
+		r.HandleFunc("/raft/stats", raftRelay.StatsRaftHandler).Methods("GET")
+	}
+
+	// starting http & grpc server
+	srv := startGrpServer(masterOption, ms, r, raftRelay)
+
+	go ms.MasterClient.KeepConnectedToMaster()
+
+	grace.OnInterrupt(ms.Shutdown)
+
+	srv.Serve()
+}
+
+func startGrpServer(masterOption MasterOptions, ms *weed_server.MasterServer, r *mux.Router, raftRelay *weed_server.RaftRelay) cmux.CMux {
 	listeningAddress := util.JoinHostPort(*masterOption.ipBind, *masterOption.port)
 	glog.V(0).Infof("Start Seaweed Master %s at %s", util.Version(), listeningAddress)
-	masterListener, masterLocalListener, e := util.NewIpAndLocalListeners(*masterOption.ipBind, *masterOption.port, 0)
+
+	masterListener, _, e := util.NewIpAndLocalListeners(*masterOption.ipBind, *masterOption.port, 0)
 	if e != nil {
 		glog.Fatalf("Master startup error: %v", e)
 	}
 
-	// start raftServer
-	metaDir := path.Join(*masterOption.metaFolder, fmt.Sprintf("m%d", *masterOption.port))
-	raftServerOption := &weed_server.RaftServerOption{
-		GrpcDialOption:    security.LoadClientTLS(util.GetViper(), "grpc.master"),
-		Peers:             masterPeers,
-		ServerAddr:        myMasterAddress,
-		DataDir:           util.ResolvePath(metaDir),
-		Topo:              ms.Topo,
-		RaftResumeState:   *masterOption.raftResumeState,
-		HeartbeatInterval: *masterOption.heartbeatInterval,
-		ElectionTimeout:   *masterOption.electionTimeout,
-		RaftBootstrap:     *masterOption.raftBootstrap,
-	}
-	var raftServer *weed_server.RaftServer
-	var err error
-	if *masterOption.raftHashicorp {
-		if raftServer, err = weed_server.NewHashicorpRaftServer(raftServerOption); err != nil {
-			glog.Fatalf("NewHashicorpRaftServer: %s", err)
-		}
-	} else {
-		raftServer, err = weed_server.NewRaftServer(raftServerOption)
-		if raftServer == nil {
-			glog.Fatalf("please verify %s is writable, see https://github.com/seaweedfs/seaweedfs/issues/717: %s", *masterOption.metaFolder, err)
-		}
-	}
-	ms.SetRaftServer(raftServer)
-	r.HandleFunc("/cluster/status", raftServer.StatusHandler).Methods("GET")
-	r.HandleFunc("/cluster/healthz", raftServer.HealthzHandler).Methods("GET", "HEAD")
-	if *masterOption.raftHashicorp {
-		r.HandleFunc("/raft/stats", raftServer.StatsRaftHandler).Methods("GET")
-	}
-	// starting grpc server
-	grpcPort := *masterOption.portGrpc
-	grpcL, grpcLocalL, err := util.NewIpAndLocalListeners(*masterOption.ipBind, grpcPort, 0)
-	if err != nil {
-		glog.Fatalf("master failed to listen on grpc port %d: %v", grpcPort, err)
-	}
+	cmux_ := cmux.New(masterListener)
+	grpcL := cmux_.MatchWithWriters(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"))
+	httpL := cmux_.Match(cmux.HTTP1Fast()) // serve http
+
 	grpcS := pb.NewGrpcServer(security.LoadServerTLS(util.GetViper(), "grpc.master"))
 	master_pb.RegisterSeaweedServer(grpcS, ms)
-	if *masterOption.raftHashicorp {
-		raftServer.TransportManager.Register(grpcS)
-	} else {
-		protobuf.RegisterRaftServer(grpcS, raftServer)
-	}
+	raftRelay.Relay.RegisterServers(grpcS)
 	reflection.Register(grpcS)
-	glog.V(0).Infof("Start Seaweed Master %s grpc server at %s:%d", util.Version(), *masterOption.ipBind, grpcPort)
-	if grpcLocalL != nil {
-		go grpcS.Serve(grpcLocalL)
-	}
 	go grpcS.Serve(grpcL)
-
-	timeSleep := 1500 * time.Millisecond
-	if !*masterOption.raftHashicorp {
-		go func() {
-			time.Sleep(timeSleep)
-
-			ms.Topo.RaftServerAccessLock.RLock()
-			isEmptyMaster := ms.Topo.RaftServer.Leader() == "" && ms.Topo.RaftServer.IsLogEmpty()
-			if isEmptyMaster && isTheFirstOne(myMasterAddress, peers) && ms.MasterClient.FindLeaderFromOtherPeers(myMasterAddress) == "" {
-				raftServer.DoJoinCommand()
-			}
-			ms.Topo.RaftServerAccessLock.RUnlock()
-		}()
-	}
-
-	go ms.MasterClient.KeepConnectedToMaster()
-
-	// start http server
-	var (
-		clientCertFile,
-		certFile,
-		keyFile string
-	)
-	useTLS := false
-	useMTLS := false
-
-	if viper.GetString("https.master.key") != "" {
-		useTLS = true
-		certFile = viper.GetString("https.master.cert")
-		keyFile = viper.GetString("https.master.key")
-	}
-
-	if viper.GetString("https.master.ca") != "" {
-		useMTLS = true
-		clientCertFile = viper.GetString("https.master.ca")
-	}
+	grace.OnInterrupt(grpcS.Stop)
 
 	httpS := &http.Server{Handler: r}
-	if masterLocalListener != nil {
-		go httpS.Serve(masterLocalListener)
-	}
+	go httpS.Serve(httpL)
 
-	if useMTLS {
-		httpS.TLSConfig = security.LoadClientTLSHTTP(clientCertFile)
-	}
-
-	if useTLS {
-		go httpS.ServeTLS(masterListener, certFile, keyFile)
-	} else {
-		go httpS.Serve(masterListener)
-	}
-
-	grace.OnInterrupt(ms.Shutdown)
-	grace.OnInterrupt(grpcS.Stop)
-	grace.OnReload(func() {
-		if ms.Topo.HashicorpRaft != nil && ms.Topo.HashicorpRaft.State() == hashicorpRaft.Leader {
-			ms.Topo.HashicorpRaft.LeadershipTransfer()
-		}
-	})
-	select {}
+	glog.V(0).Infof("Start Seaweed Master %s grpc server at %s:%d", util.Version(), *masterOption.ipBind, *masterOption.port)
+	return cmux_
 }
 
 func checkPeers(masterIp string, masterPort int, masterGrpcPort int, peers string) (masterAddress pb.ServerAddress, cleanedPeers []pb.ServerAddress) {
@@ -312,4 +253,42 @@ func (m *MasterOptions) toMasterOption(whiteList []string) *weed_server.MasterOp
 		MetricsAddress:          *m.metricsAddress,
 		MetricsIntervalSec:      *m.metricsIntervalSec,
 	}
+}
+
+func (m *MasterOptions) GetRaftLaunchConfig() (*raftrelay.LaunchConfig, error) {
+	cfg := raftrelay.NewDefaultConfig()
+	cfg.Name = *m.name
+	cfg.Dir = util.ResolvePath(*m.metaFolder)
+	cfg.InitialCluster = *m.InitialCluster
+	cfg.ClusterState = *m.ClusterState
+	// cfg.ElectionMs =
+	// cfg.InitialElectionTickAdvance =
+	// cfg.BackendBatchInterval =
+	// cfg.BackendBatchLimit =
+	// cfg.QuotaBackendBytes =
+	// cfg.MaxTxnOps =
+	// cfg.MaxRequestBytes =
+	// cfg.InitialCluster =
+	// cfg.PreVote =
+	// cfg.ForceNewCluster =
+
+	cfg.LogLevel = *m.LogLevel
+
+	uniqueUrl := raftflags.NewUniqueURLsWithExceptions("", "")
+	uniqueUrl.Set(*m.LPUrls)
+	cfg.LPUrls = uniqueUrl.UniqueURLSlice()
+
+	lCUrls := "http://" + m.GetClientAddress()
+	uniqueUrl = raftflags.NewUniqueURLsWithExceptions("", "")
+	uniqueUrl.Set(lCUrls)
+	cfg.LCUrls = uniqueUrl.UniqueURLSlice()
+
+	uniqueStr := raftflags.NewUniqueStringsValue("")
+	uniqueStr.Set(*m.LogOutputs)
+	cfg.LogOutputs = uniqueStr.StringSlice()
+	return cfg, cfg.Validate()
+}
+
+func (m *MasterOptions) GetClientAddress() string {
+	return fmt.Sprintf("%v:%d", *m.ip, *m.port)
 }

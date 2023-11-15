@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SeaweedFS {{ .Version }}</title>
+    <title>Nebulas {{ .Version }}</title>
     <link rel="stylesheet" href="/seaweedfsstatic/bootstrap/3.3.1/css/bootstrap.min.css">
 </head>
 <body>
@@ -9,7 +9,7 @@
     <div class="page-header">
         <h1>
             <a href="https://github.com/seaweedfs/seaweedfs"><img src="/seaweedfsstatic/seaweed50x50.png"></img></a>
-            SeaweedFS <small>{{ .Version }}</small>
+            Nebulas <small>{{ .Version }}</small>
         </h1>
     </div>
 
@@ -33,14 +33,14 @@
                 {{ with .RaftServer }}
                 <tr>
                     <th>Leader</th>
-                    <td><a href="http://{{ .Leader }}">{{ .Leader }}</a></td>
+                    <td><a href="http://{{ .LeaderClientAddr }}">{{ .LeaderClientAddr }}</a></td>
                 </tr>
                 <tr>
                     <th>Other Masters</th>
                     <td class="col-sm-5">
                         <ul class="list-unstyled">
-                            {{ range $k, $p := .Peers }}
-                            <li><a href="http://{{ $p.Name }}/ui/index.html">{{ $p.Name }}</a></li>
+                            {{ range $k, $p := .Peers.Peers }}
+                            <li><a href="http://{{ (index $p.ClientAddress 0) }}/ui/index.html">{{ (index $p.ClientAddress 0) }}</a></li>
                             {{ end }}
                         </ul>
                     </td>

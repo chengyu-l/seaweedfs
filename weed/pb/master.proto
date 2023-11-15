@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package master_pb;
+package pb;
 
 option go_package = "github.com/seaweedfs/seaweedfs/weed/pb/master_pb";
 
@@ -53,39 +53,58 @@ service Seaweed {
 
 //////////////////////////////////////////////////
 
+message BytesStats {
+  uint64 bytes_in_per_day = 1;
+  uint64 bytes_out_per_day = 2;
+  uint64 bytes_in_per_week = 3;
+  uint64 bytes_out_per_week = 4;
+}
+
 message Heartbeat {
+  //  reserved 4, 10, 13, 17;
   string ip = 1;
   uint32 port = 2;
   string public_url = 3;
+  uint32 max_volume_count = 4; //  replace by max_volume_counts
   uint64 max_file_key = 5;
   string data_center = 6;
   string rack = 7;
   uint32 admin_port = 8;
   repeated VolumeInformationMessage volumes = 9;
+  string row = 10;
+  uint64 free_storage_space = 11;
+  uint64 total_storage_space = 12;
+  BytesStats bytes_stats = 13;
+  // Only add or update volumes and do not delete volumes when this field is disenabled.
+  bool delete_inexistent = 16;
+  string server = 17;
+
   // delta volumes
-  repeated VolumeShortInformationMessage new_volumes = 10;
-  repeated VolumeShortInformationMessage deleted_volumes = 11;
-  bool has_no_volumes = 12;
+  repeated VolumeShortInformationMessage new_volumes = 14;
+  repeated VolumeShortInformationMessage deleted_volumes = 15;
+  bool has_no_volumes = 18;
 
   // erasure coding
-  repeated VolumeEcShardInformationMessage ec_shards = 16;
+  repeated VolumeEcShardInformationMessage ec_shards = 19;
   // delta erasure coding shards
-  repeated VolumeEcShardInformationMessage new_ec_shards = 17;
-  repeated VolumeEcShardInformationMessage deleted_ec_shards = 18;
-  bool has_no_ec_shards = 19;
+  repeated VolumeEcShardInformationMessage new_ec_shards = 20;
+  repeated VolumeEcShardInformationMessage deleted_ec_shards = 21;
+  bool has_no_ec_shards = 22;
 
-  map<string, uint32> max_volume_counts = 4;
-  uint32 grpc_port = 20;
-  repeated string location_uuids = 21;
+  map<string, uint32> max_volume_counts = 23;
+  uint32 grpc_port = 24;
+  repeated string location_uuids = 25;
 }
 
 message HeartbeatResponse {
+  reserved 2;
   uint64 volume_size_limit = 1;
-  string leader = 2;
-  string metrics_address = 3;
-  uint32 metrics_interval_seconds = 4;
-  repeated StorageBackend storage_backends = 5;
-  repeated string duplicated_uuids = 6;
+  // string secretKey = 2;
+  string leader = 3;
+  string metrics_address = 4;
+  uint32 metrics_interval_seconds = 5;
+  repeated StorageBackend storage_backends = 6;
+  repeated string duplicated_uuids = 7;
 }
 
 message VolumeInformationMessage {
@@ -108,11 +127,13 @@ message VolumeInformationMessage {
 
 message VolumeShortInformationMessage {
   uint32 id = 1;
+  uint64 size = 2;
   string collection = 3;
-  uint32 replica_placement = 8;
-  uint32 version = 9;
-  uint32 ttl = 10;
-  string disk_type = 15;
+  bool read_only = 4;
+  uint32 replica_placement = 5;
+  uint32 version = 6;
+  uint32 ttl = 7;
+  string disk_type = 8;
 }
 
 message VolumeEcShardInformationMessage {

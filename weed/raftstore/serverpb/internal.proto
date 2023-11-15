@@ -1,0 +1,190 @@
+syntax = "proto3";
+package serverpb;
+
+import "server_pb.proto";
+
+option go_package = "serverpb";
+
+import "google/api/annotations.proto";
+
+service KV {
+  // Range gets the keys in the range from the key-value store.
+  rpc Range(RangeRequest) returns (RangeResponse) {
+      option (google.api.http) = {
+        post: "/v1/kv/range"
+        body: "*"
+    };
+  }
+
+  // Put puts the given key into the key-value store.
+  // A put request increments the revision of the key-value store
+  // and generates one event in the event history.
+  rpc Put(PutRequest) returns (PutResponse) {
+      option (google.api.http) = {
+        post: "/v1/kv/put"
+        body: "*"
+    };
+  }
+
+  // DeleteRange deletes the given range from the key-value store.
+  // A delete request increments the revision of the key-value store
+  // and generates a delete event in the event history for every deleted key.
+  rpc DeleteRange(DeleteRangeRequest) returns (DeleteRangeResponse) {
+      option (google.api.http) = {
+        post: "/v1/kv/deleterange"
+        body: "*"
+    };
+  }
+
+  // Txn processes multiple requests in a single transaction.
+  // A txn request increments the revision of the key-value store
+  // and generates events with the same revision for every completed request.
+  // It is not allowed to modify the same key several times within one txn.
+  rpc Txn(TxnRequest) returns (TxnResponse) {
+      option (google.api.http) = {
+        post: "/v1/kv/txn"
+        body: "*"
+    };
+  }
+}
+
+service Cluster {
+  // MemberAdd adds a member into the cluster.
+  rpc MemberAdd(MemberAddRequest) returns (MemberAddResponse) {
+      option (google.api.http) = {
+        post: "/v1/cluster/member/add"
+        body: "*"
+    };
+  }
+
+  // MemberRemove removes an existing member from the cluster.
+  rpc MemberRemove(MemberRemoveRequest) returns (MemberRemoveResponse) {
+      option (google.api.http) = {
+        post: "/v1/cluster/member/remove"
+        body: "*"
+    };
+  }
+
+  // MemberUpdate updates the member configuration.
+  rpc MemberUpdate(MemberRaftAttrUpdateRequest) returns (MemberRaftAttrUpdateResponse) {
+      option (google.api.http) = {
+        post: "/v1/cluster/member/update"
+        body: "*"
+    };
+  }
+
+  // MemberList lists all the members in the cluster.
+  rpc MemberList(MemberListRequest) returns (MemberListResponse) {
+      option (google.api.http) = {
+        post: "/v1/cluster/member/list"
+        body: "*"
+    };
+  }
+
+  // MemberPromote promotes a member from raft learner (non-voting) to raft voting member.
+  rpc MemberPromote(MemberPromoteRequest) returns (MemberPromoteResponse) {
+      option (google.api.http) = {
+        post: "/v1/cluster/member/promote"
+        body: "*"
+    };
+  }
+}
+
+service Maintenance {
+  // Defragment defragments a member's backend database to recover storage space.
+  rpc Defragment(DefragmentRequest) returns (DefragmentResponse) {
+      option (google.api.http) = {
+        post: "/v1/maintenance/defragment"
+        body: "*"
+    };
+  }
+  //// Snapshot sends a snapshot of the entire backend from a member over a stream to a client.
+  //rpc Snapshot(SnapshotRequest) returns (stream SnapshotResponse) {
+  //    option (google.api.http) = {
+  //      post: "/maintenance/snapshot"
+  //      body: "*"
+  //  };
+  //}
+  // MoveLeader requests current leader node to transfer its leadership to transferee.
+  rpc MoveLeader(MoveLeaderRequest) returns (MoveLeaderResponse) {
+      option (google.api.http) = {
+        post: "/v1/maintenance/transfer-leadership"
+        body: "*"
+    };
+  }
+    // Status gets the status of the member.
+  rpc Status(StatusRequest) returns (StatusResponse) {
+     option (google.api.http) = {
+       post: "/v1/maintenance/status"
+       body: "*"
+     };
+  }
+}
+
+enum CmdType {
+  Invalid = 0;
+  Range = 1;
+  Put = 2;
+  Delete = 3;
+  Txn = 4;
+}
+
+// Request represent clients' request
+message Request {
+  CmdType cmd_type = 1;
+  RangeRequest range = 2;
+  PutRequest put = 3;
+  DeleteRangeRequest delete_range = 4;
+  TxnRequest txn = 5;
+}
+
+message Response {
+  CmdType cmd_type = 1;
+  RangeResponse range = 2;
+  PutResponse put = 3;
+  DeleteRangeResponse delete_range = 4;
+  TxnResponse txn = 5;
+}
+
+enum AdminCmdType {
+  InvalidAdmin = 0;
+  MemberAdd = 1;
+  MemberRemove = 2;
+  MemberPromote = 4;
+  MoveLeader = 5;
+
+  MemberList = 6;
+  MemberRaftAttrUpdate = 7; // Update peer urls used to communicate with other raft node
+  MemberNoRaftAttrUpdate = 8; // Update client urls for a special raft node
+}
+
+message AdminRequest {
+  AdminCmdType cmd_type = 1;
+  MemberAddRequest member_add = 2;
+  MemberRemoveRequest member_remove = 3;
+  MemberPromoteRequest member_promote = 4;
+  MoveLeaderRequest move_leader = 5;
+  MemberRaftAttrUpdateRequest member_raft_attr_update = 6;
+  MemberNoRaftAttrUpdateRequest member_no_raft_attr_update = 7;
+}
+
+message AdminResponse {
+  AdminCmdType cmd_type = 1;
+  MemberAddResponse member_add = 2;
+  MemberRemoveResponse member_remove = 3;
+  MemberPromoteResponse member_promote = 4;
+  MoveLeaderResponse move_leader = 5;
+  MemberRaftAttrUpdateResponse member_raft_attr_update = 6;
+  MemberNoRaftAttrUpdateResponse member_no_raft_attr_update = 7;
+}
+
+// An InternalRaftRequest is the union of all requests which can be
+// sent via raft.
+message InternalRaftRequest{
+  uint64 ID = 1;
+  Request client_request = 2;
+  AdminRequest admin_request = 3;
+}
+
+message EmptyResponse {
+}

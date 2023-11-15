@@ -12,14 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/seaweedfs/seaweedfs/weed/stats"
-
 	"github.com/seaweedfs/seaweedfs/weed/cluster"
 	"github.com/seaweedfs/seaweedfs/weed/pb"
 
 	"github.com/gorilla/mux"
 	hashicorpRaft "github.com/hashicorp/raft"
-	"github.com/seaweedfs/raft"
 	"google.golang.org/grpc"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
@@ -164,39 +161,12 @@ func NewMasterServer(r *mux.Router, option *MasterOption, peers map[string]pb.Se
 	return ms
 }
 
-func (ms *MasterServer) SetRaftServer(raftServer *RaftServer) {
+func (ms *MasterServer) SetRaftServer(raftRelay *RaftRelay) {
 	var raftServerName string
 
 	ms.Topo.RaftServerAccessLock.Lock()
-	if raftServer.raftServer != nil {
-		ms.Topo.RaftServer = raftServer.raftServer
-		ms.Topo.RaftServer.AddEventListener(raft.LeaderChangeEventType, func(e raft.Event) {
-			glog.V(0).Infof("leader change event: %+v => %+v", e.PrevValue(), e.Value())
-			stats.MasterLeaderChangeCounter.WithLabelValues(fmt.Sprintf("%+v", e.Value())).Inc()
-			if ms.Topo.RaftServer.Leader() != "" {
-				glog.V(0).Infof("[%s] %s becomes leader.", ms.Topo.RaftServer.Name(), ms.Topo.RaftServer.Leader())
-			}
-		})
-		raftServerName = fmt.Sprintf("[%s]", ms.Topo.RaftServer.Name())
-	} else if raftServer.RaftHashicorp != nil {
-		ms.Topo.HashicorpRaft = raftServer.RaftHashicorp
-		leaderCh := raftServer.RaftHashicorp.LeaderCh()
-		prevLeader, _ := ms.Topo.HashicorpRaft.LeaderWithID()
-		raftServerName = ms.Topo.HashicorpRaft.String()
-		go func() {
-			for {
-				select {
-				case isLeader := <-leaderCh:
-					ms.Topo.RaftServerAccessLock.RLock()
-					leader, _ := ms.Topo.HashicorpRaft.LeaderWithID()
-					ms.Topo.RaftServerAccessLock.RUnlock()
-					glog.V(0).Infof("is leader %+v change event: %+v => %+v", isLeader, prevLeader, leader)
-					stats.MasterLeaderChangeCounter.WithLabelValues(fmt.Sprintf("%+v", leader)).Inc()
-					prevLeader = leader
-				}
-			}
-		}()
-	}
+	ms.Topo.RaftRelay = raftRelay.Relay
+	raftServerName = fmt.Sprintf("[%s]", ms.Topo.RaftRelay.Name())
 	ms.Topo.RaftServerAccessLock.Unlock()
 
 	if ms.Topo.IsLeader() {
@@ -204,8 +174,8 @@ func (ms *MasterServer) SetRaftServer(raftServer *RaftServer) {
 	} else {
 		var raftServerLeader string
 		ms.Topo.RaftServerAccessLock.RLock()
-		if ms.Topo.RaftServer != nil {
-			raftServerLeader = ms.Topo.RaftServer.Leader()
+		if ms.Topo.RaftRelay != nil {
+			raftServerLeader = ms.Topo.RaftRelay.LeaderClientAddr()
 		} else if ms.Topo.HashicorpRaft != nil {
 			raftServerName = ms.Topo.HashicorpRaft.String()
 			raftServerLeaderAddr, _ := ms.Topo.HashicorpRaft.LeaderWithID()
@@ -241,7 +211,7 @@ func (ms *MasterServer) proxyToLeader(f http.HandlerFunc) http.HandlerFunc {
 		}
 
 		// proxy to leader
-		glog.V(4).Infoln("proxying to leader", raftServerLeader)
+		glog.V(4).Infoln("proxying to leader", raftServerLeader, "RemoteAddr", r.RemoteAddr, "url", r.URL.String())
 		proxy := httputil.NewSingleHostReverseProxy(targetUrl)
 		director := proxy.Director
 		proxy.Director = func(req *http.Request) {
@@ -400,6 +370,10 @@ func (ms *MasterServer) OnPeerUpdate(update *master_pb.ClusterNodeUpdate, startF
 }
 
 func (ms *MasterServer) Shutdown() {
+	if ms.Topo != nil && ms.Topo.RaftRelay != nil {
+		ms.Topo.RaftRelay.Stop()
+	}
+
 	if ms.Topo == nil || ms.Topo.HashicorpRaft == nil {
 		return
 	}

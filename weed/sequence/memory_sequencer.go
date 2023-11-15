@@ -34,3 +34,9 @@ func (m *MemorySequencer) SetMax(seenValue uint64) {
 func (m *MemorySequencer) Peek() uint64 {
 	return m.counter
 }
+
+func (m *MemorySequencer) Initialize(c, ma uint64) {
+	m.sequenceLock.Lock()
+	defer m.sequenceLock.Unlock()
+	m.counter = c
+}

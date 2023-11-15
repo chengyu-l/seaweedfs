@@ -59,11 +59,11 @@ func NewGrpcServer(opts ...grpc.ServerOption) *grpc.Server {
 		grpc.MaxRecvMsgSize(Max_Message_Size),
 		grpc.MaxSendMsgSize(Max_Message_Size),
 	)
-	for _, opt := range opts {
-		if opt != nil {
-			options = append(options, opt)
-		}
-	}
+	//for _, opt := range opts {
+	//	if opt != nil {
+	//		options = append(options, opt)
+	//	}
+	//}
 	return grpc.NewServer(options...)
 }
 

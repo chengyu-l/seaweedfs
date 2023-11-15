@@ -47,3 +47,6 @@ func (m *SnowflakeSequencer) SetMax(seenValue uint64) {
 func (m *SnowflakeSequencer) Peek() uint64 {
 	return uint64(m.node.Generate().Int64())
 }
+
+func (m *SnowflakeSequencer) Initialize(c, ma uint64) {
+}

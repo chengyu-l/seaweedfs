@@ -1,0 +1,29 @@
+syntax = "proto3";
+package kvpb;
+
+import "nebulas/nebulasfs/raftstore/serverpb/raft_relay.proto";
+
+//import "gogoproto/gogo.proto";
+//
+//option (gogoproto.marshaler_all) = true;
+//option (gogoproto.sizer_all) = true;
+//option (gogoproto.unmarshaler_all) = true;
+//option (gogoproto.goproto_getters_all) = false;
+//option (gogoproto.goproto_enum_prefix_all) = false;
+
+message Event {
+  enum EventType {
+    PUT = 0;
+    DELETE = 1;
+  }
+  // type is the kind of event. If type is a PUT, it indicates
+  // new data has been stored to the key. If type is a DELETE,
+  // it indicates the key was deleted.
+  EventType type = 1;
+  // kv holds the KeyValue for the event.
+  // A PUT event contains current kv pair.
+  // A PUT event with kv.Version=1 indicates the creation of a key.
+  // A DELETE/EXPIRE event contains the deleted key with
+  // its modification revision set to the revision of deletion.
+  raftrelaypb.KeyValue kv = 2;
+}

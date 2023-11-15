@@ -1,9 +1,9 @@
 package topology
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/seaweedfs/seaweedfs/weed/toraft"
 	"math/rand"
 	"sync"
 	"time"
@@ -14,8 +14,6 @@ import (
 	backoff "github.com/cenkalti/backoff/v4"
 
 	hashicorpRaft "github.com/hashicorp/raft"
-	"github.com/seaweedfs/raft"
-
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 	"github.com/seaweedfs/seaweedfs/weed/sequence"
@@ -46,7 +44,8 @@ type Topology struct {
 
 	Configuration *Configuration
 
-	RaftServer           raft.Server
+	//RaftServer           raft.Server
+	RaftRelay            toraft.Relay
 	RaftServerAccessLock sync.RWMutex
 	HashicorpRaft        *hashicorpRaft.Raft
 	UuidAccessLock       sync.RWMutex
@@ -80,21 +79,12 @@ func (t *Topology) IsLeader() bool {
 	t.RaftServerAccessLock.RLock()
 	defer t.RaftServerAccessLock.RUnlock()
 
-	if t.RaftServer != nil {
-		if t.RaftServer.State() == raft.Leader {
-			return true
-		}
-		if leader, err := t.Leader(); err == nil {
-			if pb.ServerAddress(t.RaftServer.Name()) == leader {
-				return true
-			}
-		}
-	} else if t.HashicorpRaft != nil {
-		if t.HashicorpRaft.State() == hashicorpRaft.Leader {
-			return true
-		}
+	isLeader := false
+	if t.RaftRelay != nil {
+		isLeader = t.RaftRelay.IsLeader()
 	}
-	return false
+
+	return isLeader
 }
 
 func (t *Topology) Leader() (l pb.ServerAddress, err error) {
@@ -121,14 +111,7 @@ func (t *Topology) MaybeLeader() (l pb.ServerAddress, err error) {
 	t.RaftServerAccessLock.RLock()
 	defer t.RaftServerAccessLock.RUnlock()
 
-	if t.RaftServer != nil {
-		l = pb.ServerAddress(t.RaftServer.Leader())
-	} else if t.HashicorpRaft != nil {
-		l = pb.ServerAddress(t.HashicorpRaft.Leader())
-	} else {
-		err = errors.New("Raft Server not ready yet!")
-	}
-
+	l = pb.ServerAddress(t.RaftRelay.LeaderClientAddr())
 	return
 }
 
@@ -163,19 +146,11 @@ func (t *Topology) NextVolumeId() (needle.VolumeId, error) {
 	t.RaftServerAccessLock.RLock()
 	defer t.RaftServerAccessLock.RUnlock()
 
-	if t.RaftServer != nil {
-		if _, err := t.RaftServer.Do(NewMaxVolumeIdCommand(next)); err != nil {
-			return 0, err
-		}
-	} else if t.HashicorpRaft != nil {
-		b, err := json.Marshal(NewMaxVolumeIdCommand(next))
-		if err != nil {
-			return 0, fmt.Errorf("failed marshal NewMaxVolumeIdCommand: %+v", err)
-		}
-		if future := t.HashicorpRaft.Apply(b, time.Second); future.Error() != nil {
-			return 0, future.Error()
-		}
+	_, _, err := t.RaftRelay.AllocateVolumeIdsRange(next, 1)
+	if err != nil {
+		return 0, err
 	}
+
 	return next, nil
 }
 

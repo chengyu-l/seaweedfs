@@ -16,3 +16,6 @@ func (vid VolumeId) String() string {
 func (vid VolumeId) Next() VolumeId {
 	return VolumeId(uint32(vid) + 1)
 }
+func (vid *VolumeId) Skip(length uint) VolumeId {
+	return VolumeId(uint32(*vid) + uint32(length))
+}
