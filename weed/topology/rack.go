@@ -31,7 +31,7 @@ func (r *Rack) FindDataNode(ip string, port int) *DataNode {
 	}
 	return nil
 }
-func (r *Rack) GetOrCreateDataNode(ip string, port int, grpcPort int, publicUrl string, maxVolumeCounts map[string]uint32) *DataNode {
+func (r *Rack) GetOrCreateDataNode(ip string, port int, grpcPort int, publicUrl string, maxVolumeCounts map[string]uint32, nebulasMaxVolumeCount uint32) *DataNode {
 	r.Lock()
 	defer r.Unlock()
 	for _, c := range r.children {
@@ -53,6 +53,15 @@ func (r *Rack) GetOrCreateDataNode(ip string, port int, grpcPort int, publicUrl 
 		disk.diskUsages.getOrCreateDisk(types.ToDiskType(diskType)).maxVolumeCount = int64(maxVolumeCount)
 		dn.LinkChildNode(disk)
 	}
+
+	// 兼容 nebulas
+	if len(maxVolumeCounts) == 0 {
+		diskType := "hdd"
+		disk := NewDisk(diskType)
+		disk.diskUsages.getOrCreateDisk(types.ToDiskType(diskType)).maxVolumeCount = int64(nebulasMaxVolumeCount)
+		dn.LinkChildNode(disk)
+	}
+
 	return dn
 }
 

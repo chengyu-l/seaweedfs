@@ -133,7 +133,7 @@ func (dn *DataNode) DeltaUpdateVolumes(newVolumes, deletedVolumes []storage.Volu
 	return
 }
 
-func (dn *DataNode) AdjustMaxVolumeCounts(maxVolumeCounts map[string]uint32) {
+func (dn *DataNode) AdjustMaxVolumeCounts(maxVolumeCounts map[string]uint32, nebulasMaxVolumeCount uint32) {
 	deltaDiskUsages := newDiskUsages()
 	for diskType, maxVolumeCount := range maxVolumeCounts {
 		if maxVolumeCount == 0 {
@@ -149,6 +149,21 @@ func (dn *DataNode) AdjustMaxVolumeCounts(maxVolumeCounts map[string]uint32) {
 		disk := dn.getOrCreateDisk(dt.String())
 		deltaDiskUsage := deltaDiskUsages.getOrCreateDisk(dt)
 		deltaDiskUsage.maxVolumeCount = int64(maxVolumeCount) - currentDiskUsageMaxVolumeCount
+		disk.UpAdjustDiskUsageDelta(deltaDiskUsages)
+	}
+
+	// 兼容 nebulas
+	if len(maxVolumeCounts) == 0 {
+		diskType := "hdd"
+		dt := types.ToDiskType(diskType)
+		currentDiskUsage := dn.diskUsages.getOrCreateDisk(dt)
+		currentDiskUsageMaxVolumeCount := atomic.LoadInt64(&currentDiskUsage.maxVolumeCount)
+		if currentDiskUsageMaxVolumeCount == int64(nebulasMaxVolumeCount) {
+			return
+		}
+		disk := dn.getOrCreateDisk(dt.String())
+		deltaDiskUsage := deltaDiskUsages.getOrCreateDisk(dt)
+		deltaDiskUsage.maxVolumeCount = int64(nebulasMaxVolumeCount) - currentDiskUsageMaxVolumeCount
 		disk.UpAdjustDiskUsageDelta(deltaDiskUsages)
 	}
 }
