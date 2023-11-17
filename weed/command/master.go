@@ -163,12 +163,6 @@ func startMaster(masterOption MasterOptions, masterWhiteList []string) {
 	raftRelay := weed_server.NewRaftRelay(r, *masterOption.clusterId, ms.Topo, raftOpt)
 	ms.SetRaftServer(raftRelay)
 
-	r.HandleFunc("/cluster/status", raftRelay.StatusHandler).Methods("GET")
-	r.HandleFunc("/cluster/healthz", raftRelay.HealthzHandler).Methods("GET", "HEAD")
-	if *masterOption.raftHashicorp {
-		r.HandleFunc("/raft/stats", raftRelay.StatsRaftHandler).Methods("GET")
-	}
-
 	// starting http & grpc server
 	srv := startGrpServer(masterOption, ms, r, raftRelay)
 

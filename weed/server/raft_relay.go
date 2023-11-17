@@ -36,7 +36,12 @@ func NewRaftRelay(r *mux.Router, clusterId string, topo *topology.Topology, cfg 
 	if err != nil {
 		glog.Fatalln(err)
 	}
+
 	go s.roleChangeHook()
+
+	r.HandleFunc("/cluster/status", s.StatusHandler).Methods("GET")
+	r.HandleFunc("/cluster/healthz", s.HealthzHandler).Methods("GET", "HEAD")
+
 	return s
 }
 

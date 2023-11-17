@@ -5,7 +5,6 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 	"github.com/seaweedfs/seaweedfs/weed/util"
 	"net"
-	"strconv"
 	"strings"
 )
 
@@ -13,21 +12,21 @@ type ServerAddress string
 type ServerAddresses string
 
 func NewServerAddress(host string, port int, grpcPort int) ServerAddress {
-	if grpcPort == 0 || grpcPort == port+10000 {
-		return ServerAddress(util.JoinHostPort(host, port))
-	}
-	return ServerAddress(util.JoinHostPort(host, port) + "." + strconv.Itoa(grpcPort))
+	//if grpcPort == 0 || grpcPort == port+10000 {
+	return ServerAddress(util.JoinHostPort(host, port))
+	//}
+	//return ServerAddress(util.JoinHostPort(host, port) + "." + strconv.Itoa(grpcPort))
 }
 
 func NewServerAddressWithGrpcPort(address string, grpcPort int) ServerAddress {
-	if grpcPort == 0 {
-		return ServerAddress(address)
-	}
-	_, port, _ := hostAndPort(address)
-	if uint64(grpcPort) == port+10000 {
-		return ServerAddress(address)
-	}
-	return ServerAddress(address + "." + strconv.Itoa(grpcPort))
+	//if grpcPort == 0 {
+	return ServerAddress(address)
+	//}
+	//_, port, _ := hostAndPort(address)
+	//if uint64(grpcPort) == port+10000 {
+	//	return ServerAddress(address)
+	//}
+	//return ServerAddress(address + "." + strconv.Itoa(grpcPort))
 }
 
 func NewServerAddressFromDataNode(dn *master_pb.DataNodeInfo) ServerAddress {
