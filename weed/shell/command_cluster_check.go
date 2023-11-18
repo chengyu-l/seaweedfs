@@ -8,7 +8,6 @@ import (
 
 	"github.com/seaweedfs/seaweedfs/weed/cluster"
 	"github.com/seaweedfs/seaweedfs/weed/pb"
-	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
 	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 	"github.com/seaweedfs/seaweedfs/weed/pb/volume_server_pb"
 )
@@ -54,24 +53,6 @@ func (c *commandClusterCheck) Do(args []string, commandEnv *CommandEnv, writer i
 	if emptyDiskTypeFound && emptyDiskTypeDiskInfo.MaxVolumeCount == 0 || hddDiskTypeFound && hddDiskTypeDiskInfo.MaxVolumeCount == 0 {
 		return fmt.Errorf("Need to a hdd disk type!")
 	}
-
-	// collect filers
-	var filers []pb.ServerAddress
-	err = commandEnv.MasterClient.WithClient(false, func(client master_pb.SeaweedClient) error {
-		resp, err := client.ListClusterNodes(context.Background(), &master_pb.ListClusterNodesRequest{
-			ClientType: cluster.FilerType,
-			FilerGroup: *commandEnv.option.FilerGroup,
-		})
-
-		for _, node := range resp.ClusterNodes {
-			filers = append(filers, pb.ServerAddress(node.Address))
-		}
-		return err
-	})
-	if err != nil {
-		return
-	}
-	fmt.Fprintf(writer, "the cluster has %d filers: %+v\n", len(filers), filers)
 
 	// collect volume servers
 	var volumeServers []pb.ServerAddress
@@ -157,46 +138,6 @@ func (c *commandClusterCheck) Do(args []string, commandEnv *CommandEnv, writer i
 		}
 	}
 
-	// check from filers to masters
-	for _, filer := range filers {
-		for _, master := range masters {
-			fmt.Fprintf(writer, "checking filer %s to master %s ... ", string(filer), string(master))
-			err := pb.WithFilerClient(false, 0, filer, commandEnv.option.GrpcDialOption, func(client filer_pb.SeaweedFilerClient) error {
-				pong, err := client.Ping(context.Background(), &filer_pb.PingRequest{
-					Target:     string(master),
-					TargetType: cluster.MasterType,
-				})
-				if err == nil {
-					printTiming(writer, pong.StartTimeNs, pong.RemoteTimeNs, pong.StopTimeNs)
-				}
-				return err
-			})
-			if err != nil {
-				fmt.Fprintf(writer, "%v\n", err)
-			}
-		}
-	}
-
-	// check from filers to volume servers
-	for _, filer := range filers {
-		for _, volumeServer := range volumeServers {
-			fmt.Fprintf(writer, "checking filer %s to volume server %s ... ", string(filer), string(volumeServer))
-			err := pb.WithFilerClient(false, 0, filer, commandEnv.option.GrpcDialOption, func(client filer_pb.SeaweedFilerClient) error {
-				pong, err := client.Ping(context.Background(), &filer_pb.PingRequest{
-					Target:     string(volumeServer),
-					TargetType: cluster.VolumeServerType,
-				})
-				if err == nil {
-					printTiming(writer, pong.StartTimeNs, pong.RemoteTimeNs, pong.StopTimeNs)
-				}
-				return err
-			})
-			if err != nil {
-				fmt.Fprintf(writer, "%v\n", err)
-			}
-		}
-	}
-
 	// check between volume servers
 	for _, sourceVolumeServer := range volumeServers {
 		for _, targetVolumeServer := range volumeServers {
@@ -208,26 +149,6 @@ func (c *commandClusterCheck) Do(args []string, commandEnv *CommandEnv, writer i
 				pong, err := client.Ping(context.Background(), &volume_server_pb.PingRequest{
 					Target:     string(targetVolumeServer),
 					TargetType: cluster.VolumeServerType,
-				})
-				if err == nil {
-					printTiming(writer, pong.StartTimeNs, pong.RemoteTimeNs, pong.StopTimeNs)
-				}
-				return err
-			})
-			if err != nil {
-				fmt.Fprintf(writer, "%v\n", err)
-			}
-		}
-	}
-
-	// check between filers, and need to connect to itself
-	for _, sourceFiler := range filers {
-		for _, targetFiler := range filers {
-			fmt.Fprintf(writer, "checking filer %s to %s ... ", string(sourceFiler), string(targetFiler))
-			err := pb.WithFilerClient(false, 0, sourceFiler, commandEnv.option.GrpcDialOption, func(client filer_pb.SeaweedFilerClient) error {
-				pong, err := client.Ping(context.Background(), &filer_pb.PingRequest{
-					Target:     string(targetFiler),
-					TargetType: cluster.FilerType,
 				})
 				if err == nil {
 					printTiming(writer, pong.StartTimeNs, pong.RemoteTimeNs, pong.StopTimeNs)

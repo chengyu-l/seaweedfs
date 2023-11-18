@@ -1,29 +1,22 @@
 package weed_server
 
 import (
-	"context"
 	"fmt"
+	"github.com/seaweedfs/seaweedfs/weed/cluster"
+	"github.com/seaweedfs/seaweedfs/weed/pb"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"os"
-	"regexp"
 	"strings"
 	"sync"
-	"time"
-
-	"github.com/seaweedfs/seaweedfs/weed/cluster"
-	"github.com/seaweedfs/seaweedfs/weed/pb"
 
 	"github.com/gorilla/mux"
-	hashicorpRaft "github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 	"github.com/seaweedfs/seaweedfs/weed/security"
 	"github.com/seaweedfs/seaweedfs/weed/sequence"
-	"github.com/seaweedfs/seaweedfs/weed/shell"
 	"github.com/seaweedfs/seaweedfs/weed/topology"
 	"github.com/seaweedfs/seaweedfs/weed/util"
 	"github.com/seaweedfs/seaweedfs/weed/wdclient"
@@ -113,8 +106,6 @@ func NewMasterServer(r *mux.Router, option *MasterOption, peers map[string]pb.Se
 	}
 	ms.boundedLeaderChan = make(chan int, 16)
 
-	ms.MasterClient.SetOnPeerUpdateFn(ms.OnPeerUpdate)
-
 	seq := ms.createSequencer(option)
 	if nil == seq {
 		glog.Fatalf("create sequencer failed.")
@@ -154,10 +145,6 @@ func NewMasterServer(r *mux.Router, option *MasterOption, peers map[string]pb.Se
 
 	ms.ProcessGrowRequest()
 
-	if !option.IsFollower {
-		ms.startAdminScripts()
-	}
-
 	return ms
 }
 
@@ -176,10 +163,6 @@ func (ms *MasterServer) SetRaftServer(raftRelay *RaftRelay) {
 		ms.Topo.RaftServerAccessLock.RLock()
 		if ms.Topo.RaftRelay != nil {
 			raftServerLeader = ms.Topo.RaftRelay.LeaderClientAddr()
-		} else if ms.Topo.HashicorpRaft != nil {
-			raftServerName = ms.Topo.HashicorpRaft.String()
-			raftServerLeaderAddr, _ := ms.Topo.HashicorpRaft.LeaderWithID()
-			raftServerLeader = string(raftServerLeaderAddr)
 		}
 		ms.Topo.RaftServerAccessLock.RUnlock()
 		glog.V(0).Infof("%s %s - is the leader.", raftServerName, raftServerLeader)
@@ -226,78 +209,6 @@ func (ms *MasterServer) proxyToLeader(f http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func (ms *MasterServer) startAdminScripts() {
-	v := util.GetViper()
-	adminScripts := v.GetString("master.maintenance.scripts")
-	if adminScripts == "" {
-		return
-	}
-	glog.V(0).Infof("adminScripts: %v", adminScripts)
-
-	v.SetDefault("master.maintenance.sleep_minutes", 17)
-	sleepMinutes := v.GetInt("master.maintenance.sleep_minutes")
-
-	scriptLines := strings.Split(adminScripts, "\n")
-	if !strings.Contains(adminScripts, "lock") {
-		scriptLines = append(append([]string{}, "lock"), scriptLines...)
-		scriptLines = append(scriptLines, "unlock")
-	}
-
-	masterAddress := string(ms.option.Master)
-
-	var shellOptions shell.ShellOptions
-	shellOptions.GrpcDialOption = security.LoadClientTLS(v, "grpc.master")
-	shellOptions.Masters = &masterAddress
-
-	shellOptions.Directory = "/"
-	emptyFilerGroup := ""
-	shellOptions.FilerGroup = &emptyFilerGroup
-
-	commandEnv := shell.NewCommandEnv(&shellOptions)
-
-	reg, _ := regexp.Compile(`'.*?'|".*?"|\S+`)
-
-	go commandEnv.MasterClient.KeepConnectedToMaster()
-
-	go func() {
-		for {
-			time.Sleep(time.Duration(sleepMinutes) * time.Minute)
-			if ms.Topo.IsLeader() && ms.MasterClient.GetMaster() != "" {
-				shellOptions.FilerAddress = ms.GetOneFiler(cluster.FilerGroupName(*shellOptions.FilerGroup))
-				if shellOptions.FilerAddress == "" {
-					continue
-				}
-				for _, line := range scriptLines {
-					for _, c := range strings.Split(line, ";") {
-						processEachCmd(reg, c, commandEnv)
-					}
-				}
-			}
-		}
-	}()
-}
-
-func processEachCmd(reg *regexp.Regexp, line string, commandEnv *shell.CommandEnv) {
-	cmds := reg.FindAllString(line, -1)
-	if len(cmds) == 0 {
-		return
-	}
-	args := make([]string, len(cmds[1:]))
-	for i := range args {
-		args[i] = strings.Trim(string(cmds[1+i]), "\"'")
-	}
-	cmd := cmds[0]
-
-	for _, c := range shell.Commands {
-		if c.Name() == cmd {
-			glog.V(0).Infof("executing: %s %v", cmd, args)
-			if err := c.Do(args, commandEnv, os.Stdout); err != nil {
-				glog.V(0).Infof("error: %v", err)
-			}
-		}
-	}
-}
-
 func (ms *MasterServer) createSequencer(option *MasterOption) sequence.Sequencer {
 	var seq sequence.Sequencer
 	v := util.GetViper()
@@ -318,67 +229,8 @@ func (ms *MasterServer) createSequencer(option *MasterOption) sequence.Sequencer
 	return seq
 }
 
-func (ms *MasterServer) OnPeerUpdate(update *master_pb.ClusterNodeUpdate, startFrom time.Time) {
-	ms.Topo.RaftServerAccessLock.RLock()
-	defer ms.Topo.RaftServerAccessLock.RUnlock()
-
-	if update.NodeType != cluster.MasterType || ms.Topo.HashicorpRaft == nil {
-		return
-	}
-	glog.V(4).Infof("OnPeerUpdate: %+v", update)
-
-	peerAddress := pb.ServerAddress(update.Address)
-	peerName := string(peerAddress)
-	if ms.Topo.HashicorpRaft.State() != hashicorpRaft.Leader {
-		return
-	}
-	if update.IsAdd {
-		raftServerFound := false
-		for _, server := range ms.Topo.HashicorpRaft.GetConfiguration().Configuration().Servers {
-			if string(server.ID) == peerName {
-				raftServerFound = true
-			}
-		}
-		if !raftServerFound {
-			glog.V(0).Infof("adding new raft server: %s", peerName)
-			ms.Topo.HashicorpRaft.AddVoter(
-				hashicorpRaft.ServerID(peerName),
-				hashicorpRaft.ServerAddress(peerAddress.ToGrpcAddress()), 0, 0)
-		}
-	} else {
-		pb.WithMasterClient(false, peerAddress, ms.grpcDialOption, true, func(client master_pb.SeaweedClient) error {
-			ctx, cancel := context.WithTimeout(context.TODO(), 15*time.Second)
-			defer cancel()
-			if _, err := client.Ping(ctx, &master_pb.PingRequest{Target: string(peerAddress), TargetType: cluster.MasterType}); err != nil {
-				glog.V(0).Infof("master %s didn't respond to pings. remove raft server", peerName)
-				if err := ms.MasterClient.WithClient(false, func(client master_pb.SeaweedClient) error {
-					_, err := client.RaftRemoveServer(context.Background(), &master_pb.RaftRemoveServerRequest{
-						Id:    peerName,
-						Force: false,
-					})
-					return err
-				}); err != nil {
-					glog.Warningf("failed removing old raft server: %v", err)
-					return err
-				}
-			} else {
-				glog.V(0).Infof("master %s successfully responded to ping", peerName)
-			}
-			return nil
-		})
-	}
-}
-
 func (ms *MasterServer) Shutdown() {
 	if ms.Topo != nil && ms.Topo.RaftRelay != nil {
 		ms.Topo.RaftRelay.Stop()
 	}
-
-	if ms.Topo == nil || ms.Topo.HashicorpRaft == nil {
-		return
-	}
-	if ms.Topo.HashicorpRaft.State() == hashicorpRaft.Leader {
-		ms.Topo.HashicorpRaft.LeadershipTransfer()
-	}
-	ms.Topo.HashicorpRaft.Shutdown()
 }

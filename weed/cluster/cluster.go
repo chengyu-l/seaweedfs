@@ -11,8 +11,6 @@ import (
 const (
 	MasterType       = "master"
 	VolumeServerType = "volumeServer"
-	FilerType        = "filer"
-	BrokerType       = "broker"
 )
 
 type FilerGroupName string
@@ -149,87 +147,87 @@ func NewCluster() *Cluster {
 }
 
 func (cluster *Cluster) getGroupMembers(filerGroup FilerGroupName, nodeType string, createIfNotFound bool) *GroupMembers {
-	switch nodeType {
-	case FilerType:
-		return cluster.filerGroups.getGroupMembers(filerGroup, createIfNotFound)
-	case BrokerType:
-		return cluster.brokerGroups.getGroupMembers(filerGroup, createIfNotFound)
-	}
+	//switch nodeType {
+	//case FilerType:
+	//	return cluster.filerGroups.getGroupMembers(filerGroup, createIfNotFound)
+	//case BrokerType:
+	//	return cluster.brokerGroups.getGroupMembers(filerGroup, createIfNotFound)
+	//}
 	return nil
 }
 
 func (cluster *Cluster) AddClusterNode(ns, nodeType string, dataCenter DataCenter, rack Rack, address pb.ServerAddress, version string) []*master_pb.KeepConnectedResponse {
-	filerGroup := FilerGroupName(ns)
-	switch nodeType {
-	case FilerType:
-		return cluster.filerGroups.AddClusterNode(filerGroup, nodeType, dataCenter, rack, address, version)
-	case BrokerType:
-		return cluster.brokerGroups.AddClusterNode(filerGroup, nodeType, dataCenter, rack, address, version)
-	case MasterType:
-		return []*master_pb.KeepConnectedResponse{
-			{
-				ClusterNodeUpdate: &master_pb.ClusterNodeUpdate{
-					NodeType: nodeType,
-					Address:  string(address),
-					IsAdd:    true,
-				},
+	//filerGroup := FilerGroupName(ns)
+	//switch nodeType {
+	//case FilerType:
+	//	return cluster.filerGroups.AddClusterNode(filerGroup, nodeType, dataCenter, rack, address, version)
+	//case BrokerType:
+	//	return cluster.brokerGroups.AddClusterNode(filerGroup, nodeType, dataCenter, rack, address, version)
+	//case MasterType:
+	return []*master_pb.KeepConnectedResponse{
+		{
+			ClusterNodeUpdate: &master_pb.ClusterNodeUpdate{
+				NodeType: nodeType,
+				Address:  string(address),
+				IsAdd:    true,
 			},
-		}
+		},
 	}
-	return nil
+	//}
+	//return nil
 }
 
 func (cluster *Cluster) RemoveClusterNode(ns string, nodeType string, address pb.ServerAddress) []*master_pb.KeepConnectedResponse {
-	filerGroup := FilerGroupName(ns)
-	switch nodeType {
-	case FilerType:
-		return cluster.filerGroups.RemoveClusterNode(filerGroup, nodeType, address)
-	case BrokerType:
-		return cluster.brokerGroups.RemoveClusterNode(filerGroup, nodeType, address)
-	case MasterType:
-		return []*master_pb.KeepConnectedResponse{
-			{
-				ClusterNodeUpdate: &master_pb.ClusterNodeUpdate{
-					NodeType: nodeType,
-					Address:  string(address),
-					IsAdd:    false,
-				},
+	//filerGroup := FilerGroupName(ns)
+	//switch nodeType {
+	//case FilerType:
+	//	return cluster.filerGroups.RemoveClusterNode(filerGroup, nodeType, address)
+	//case BrokerType:
+	//	return cluster.brokerGroups.RemoveClusterNode(filerGroup, nodeType, address)
+	//case MasterType:
+	return []*master_pb.KeepConnectedResponse{
+		{
+			ClusterNodeUpdate: &master_pb.ClusterNodeUpdate{
+				NodeType: nodeType,
+				Address:  string(address),
+				IsAdd:    false,
 			},
-		}
+		},
 	}
-	return nil
+	//}
+	//return nil
 }
 
 func (cluster *Cluster) ListClusterNode(filerGroup FilerGroupName, nodeType string) (nodes []*ClusterNode) {
-	switch nodeType {
-	case FilerType:
-		return cluster.filerGroups.ListClusterNode(filerGroup)
-	case BrokerType:
-		return cluster.brokerGroups.ListClusterNode(filerGroup)
-	case MasterType:
-	}
+	//switch nodeType {
+	//case FilerType:
+	//	return cluster.filerGroups.ListClusterNode(filerGroup)
+	//case BrokerType:
+	//	return cluster.brokerGroups.ListClusterNode(filerGroup)
+	//case MasterType:
+	//}
 	return
 }
 
 func (cluster *Cluster) ListClusterNodeLeaders(filerGroup FilerGroupName, nodeType string) (nodes []pb.ServerAddress) {
-	switch nodeType {
-	case FilerType:
-		return cluster.filerGroups.ListClusterNodeLeaders(filerGroup)
-	case BrokerType:
-		return cluster.brokerGroups.ListClusterNodeLeaders(filerGroup)
-	case MasterType:
-	}
+	//switch nodeType {
+	//case FilerType:
+	//	return cluster.filerGroups.ListClusterNodeLeaders(filerGroup)
+	//case BrokerType:
+	//	return cluster.brokerGroups.ListClusterNodeLeaders(filerGroup)
+	//case MasterType:
+	//}
 	return
 }
 
 func (cluster *Cluster) IsOneLeader(filerGroup FilerGroupName, nodeType string, address pb.ServerAddress) bool {
-	switch nodeType {
-	case FilerType:
-		return cluster.filerGroups.IsOneLeader(filerGroup, address)
-	case BrokerType:
-		return cluster.brokerGroups.IsOneLeader(filerGroup, address)
-	case MasterType:
-	}
+	//switch nodeType {
+	//case FilerType:
+	//	return cluster.filerGroups.IsOneLeader(filerGroup, address)
+	//case BrokerType:
+	//	return cluster.brokerGroups.IsOneLeader(filerGroup, address)
+	//case MasterType:
+	//}
 	return false
 }
 

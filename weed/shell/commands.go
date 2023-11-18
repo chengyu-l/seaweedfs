@@ -7,14 +7,11 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/pb/volume_server_pb"
 	"github.com/seaweedfs/seaweedfs/weed/storage/needle_map"
 	"io"
-	"net/url"
-	"strconv"
 	"strings"
 
 	"google.golang.org/grpc"
 
 	"github.com/seaweedfs/seaweedfs/weed/pb"
-	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
 	"github.com/seaweedfs/seaweedfs/weed/util"
 	"github.com/seaweedfs/seaweedfs/weed/wdclient"
 	"github.com/seaweedfs/seaweedfs/weed/wdclient/exclusive_locks"
@@ -69,12 +66,6 @@ func (ce *CommandEnv) parseUrl(input string) (path string, err error) {
 	return input, err
 }
 
-func (ce *CommandEnv) isDirectory(path string) bool {
-
-	return ce.checkDirectory(path) == nil
-
-}
-
 func (ce *CommandEnv) confirmIsLocked(args []string) error {
 
 	if ce.locker.IsLocked() {
@@ -93,64 +84,8 @@ func (ce *CommandEnv) isLocked() bool {
 	return ce.locker.IsLocked()
 }
 
-func (ce *CommandEnv) checkDirectory(path string) error {
-
-	dir, name := util.FullPath(path).DirAndName()
-
-	exists, err := filer_pb.Exists(ce, dir, name, true)
-
-	if !exists {
-		return fmt.Errorf("%s is not a directory", path)
-	}
-
-	return err
-
-}
-
-var _ = filer_pb.FilerClient(&CommandEnv{})
-
-func (ce *CommandEnv) WithFilerClient(streamingMode bool, fn func(filer_pb.SeaweedFilerClient) error) error {
-
-	return pb.WithGrpcFilerClient(streamingMode, 0, ce.option.FilerAddress, ce.option.GrpcDialOption, fn)
-
-}
-
-func (ce *CommandEnv) AdjustedUrl(location *filer_pb.Location) string {
-	return location.Url
-}
-
 func (ce *CommandEnv) GetDataCenter() string {
 	return ce.MasterClient.DataCenter
-}
-
-func parseFilerUrl(entryPath string) (filerServer string, filerPort int64, path string, err error) {
-	if strings.HasPrefix(entryPath, "http") {
-		var u *url.URL
-		u, err = url.Parse(entryPath)
-		if err != nil {
-			return
-		}
-		filerServer = u.Hostname()
-		portString := u.Port()
-		if portString != "" {
-			filerPort, err = strconv.ParseInt(portString, 10, 32)
-		}
-		path = u.Path
-	} else {
-		err = fmt.Errorf("path should have full url /path/to/dirOrFile : %s", entryPath)
-	}
-	return
-}
-
-func findInputDirectory(args []string) (input string) {
-	input = "."
-	if len(args) > 0 {
-		input = args[len(args)-1]
-		if strings.HasPrefix(input, "-") {
-			input = "."
-		}
-	}
-	return input
 }
 
 func readNeedleMeta(grpcDialOption grpc.DialOption, volumeServer pb.ServerAddress, volumeId uint32, needleValue needle_map.NeedleValue) (resp *volume_server_pb.ReadNeedleMetaResponse, err error) {
@@ -183,4 +118,11 @@ func readNeedleStatus(grpcDialOption grpc.DialOption, sourceVolumeServer pb.Serv
 		},
 	)
 	return
+}
+
+func infoAboutSimulationMode(writer io.Writer, forceMode bool, forceModeOption string) {
+	if forceMode {
+		return
+	}
+	fmt.Fprintf(writer, "Running in simulation mode. Use \"%s\" option to apply the changes.\n", forceModeOption)
 }

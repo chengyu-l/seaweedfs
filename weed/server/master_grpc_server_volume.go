@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/seaweedfs/raft"
-
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 	"github.com/seaweedfs/seaweedfs/weed/security"
@@ -109,7 +107,7 @@ func (ms *MasterServer) LookupVolume(ctx context.Context, req *master_pb.LookupV
 func (ms *MasterServer) Assign(ctx context.Context, req *master_pb.AssignRequest) (*master_pb.AssignResponse, error) {
 
 	if !ms.Topo.IsLeader() {
-		return nil, raft.NotLeaderError
+		return nil, NotLeaderError
 	}
 
 	if req.Count == 0 {
@@ -196,7 +194,7 @@ func (ms *MasterServer) Assign(ctx context.Context, req *master_pb.AssignRequest
 func (ms *MasterServer) Statistics(ctx context.Context, req *master_pb.StatisticsRequest) (*master_pb.StatisticsResponse, error) {
 
 	if !ms.Topo.IsLeader() {
-		return nil, raft.NotLeaderError
+		return nil, NotLeaderError
 	}
 
 	if req.Replication == "" {
@@ -226,7 +224,7 @@ func (ms *MasterServer) Statistics(ctx context.Context, req *master_pb.Statistic
 func (ms *MasterServer) VolumeList(ctx context.Context, req *master_pb.VolumeListRequest) (*master_pb.VolumeListResponse, error) {
 
 	if !ms.Topo.IsLeader() {
-		return nil, raft.NotLeaderError
+		return nil, NotLeaderError
 	}
 
 	resp := &master_pb.VolumeListResponse{
@@ -240,7 +238,7 @@ func (ms *MasterServer) VolumeList(ctx context.Context, req *master_pb.VolumeLis
 func (ms *MasterServer) LookupEcVolume(ctx context.Context, req *master_pb.LookupEcVolumeRequest) (*master_pb.LookupEcVolumeResponse, error) {
 
 	if !ms.Topo.IsLeader() {
-		return nil, raft.NotLeaderError
+		return nil, NotLeaderError
 	}
 
 	resp := &master_pb.LookupEcVolumeResponse{}
@@ -274,7 +272,7 @@ func (ms *MasterServer) LookupEcVolume(ctx context.Context, req *master_pb.Looku
 func (ms *MasterServer) VacuumVolume(ctx context.Context, req *master_pb.VacuumVolumeRequest) (*master_pb.VacuumVolumeResponse, error) {
 
 	if !ms.Topo.IsLeader() {
-		return nil, raft.NotLeaderError
+		return nil, NotLeaderError
 	}
 
 	resp := &master_pb.VacuumVolumeResponse{}
@@ -301,7 +299,7 @@ func (ms *MasterServer) EnableVacuum(ctx context.Context, req *master_pb.EnableV
 func (ms *MasterServer) VolumeMarkReadonly(ctx context.Context, req *master_pb.VolumeMarkReadonlyRequest) (*master_pb.VolumeMarkReadonlyResponse, error) {
 
 	if !ms.Topo.IsLeader() {
-		return nil, raft.NotLeaderError
+		return nil, NotLeaderError
 	}
 
 	resp := &master_pb.VolumeMarkReadonlyResponse{}

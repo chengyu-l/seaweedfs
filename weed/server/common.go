@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/s3api/s3_constants"
 	"io"
 	"io/fs"
 	"mime/multipart"
@@ -15,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -30,6 +30,32 @@ import (
 
 var serverStats *stats.ServerStats
 var startTime = time.Now()
+
+var bufPool = sync.Pool{
+	New: func() interface{} {
+		return new(bytes.Buffer)
+	},
+}
+
+var (
+	client *http.Client
+)
+
+var PassThroughHeaders = map[string]string{
+	"response-cache-control":       "Cache-Control",
+	"response-content-disposition": "Content-Disposition",
+	"response-content-encoding":    "Content-Encoding",
+	"response-content-language":    "Content-Language",
+	"response-content-type":        "Content-Type",
+	"response-expires":             "Expires",
+}
+
+func init() {
+	client = &http.Client{Transport: &http.Transport{
+		MaxIdleConns:        1024,
+		MaxIdleConnsPerHost: 1024,
+	}}
+}
 
 func init() {
 	serverStats = stats.NewServerStats()
@@ -255,7 +281,7 @@ func handleStaticResources2(r *mux.Router) {
 
 func adjustPassthroughHeaders(w http.ResponseWriter, r *http.Request, filename string) {
 	for header, values := range r.Header {
-		if normalizedHeader, ok := s3_constants.PassThroughHeaders[strings.ToLower(header)]; ok {
+		if normalizedHeader, ok := PassThroughHeaders[strings.ToLower(header)]; ok {
 			w.Header()[normalizedHeader] = values
 		}
 	}

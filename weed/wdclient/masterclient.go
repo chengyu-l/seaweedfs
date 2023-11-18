@@ -28,9 +28,7 @@ type MasterClient struct {
 	grpcDialOption    grpc.DialOption
 
 	*vidMap
-	vidMapCacheSize  int
-	OnPeerUpdate     func(update *master_pb.ClusterNodeUpdate, startFrom time.Time)
-	OnPeerUpdateLock sync.RWMutex
+	vidMapCacheSize int
 }
 
 func NewMasterClient(grpcDialOption grpc.DialOption, filerGroup string, clientType string, clientHost pb.ServerAddress, clientDataCenter string, rack string, masters map[string]pb.ServerAddress) *MasterClient {
@@ -44,12 +42,6 @@ func NewMasterClient(grpcDialOption grpc.DialOption, filerGroup string, clientTy
 		vidMap:          newVidMap(clientDataCenter),
 		vidMapCacheSize: 5,
 	}
-}
-
-func (mc *MasterClient) SetOnPeerUpdateFn(onPeerUpdate func(update *master_pb.ClusterNodeUpdate, startFrom time.Time)) {
-	mc.OnPeerUpdateLock.Lock()
-	mc.OnPeerUpdate = onPeerUpdate
-	mc.OnPeerUpdateLock.Unlock()
 }
 
 func (mc *MasterClient) GetLookupFileIdFunction() LookupFileIdFunctionType {
@@ -237,22 +229,22 @@ func (mc *MasterClient) tryConnectToMaster(master pb.ServerAddress) (nextHintedL
 				mc.updateVidMap(resp)
 			}
 
-			if resp.ClusterNodeUpdate != nil {
-				update := resp.ClusterNodeUpdate
-				mc.OnPeerUpdateLock.RLock()
-				if mc.OnPeerUpdate != nil {
-					if update.FilerGroup == mc.FilerGroup {
-						if update.IsAdd {
-							glog.V(0).Infof("+ %s.%s %s leader:%v\n", update.FilerGroup, update.NodeType, update.Address, update.IsLeader)
-						} else {
-							glog.V(0).Infof("- %s.%s %s leader:%v\n", update.FilerGroup, update.NodeType, update.Address, update.IsLeader)
-						}
-						stats.MasterClientConnectCounter.WithLabelValues(stats.OnPeerUpdate).Inc()
-						mc.OnPeerUpdate(update, time.Now())
-					}
-				}
-				mc.OnPeerUpdateLock.RUnlock()
-			}
+			//if resp.ClusterNodeUpdate != nil {
+			//	update := resp.ClusterNodeUpdate
+			//	mc.OnPeerUpdateLock.RLock()
+			//	if mc.OnPeerUpdate != nil {
+			//		if update.FilerGroup == mc.FilerGroup {
+			//			if update.IsAdd {
+			//				glog.V(0).Infof("+ %s.%s %s leader:%v\n", update.FilerGroup, update.NodeType, update.Address, update.IsLeader)
+			//			} else {
+			//				glog.V(0).Infof("- %s.%s %s leader:%v\n", update.FilerGroup, update.NodeType, update.Address, update.IsLeader)
+			//			}
+			//			stats.MasterClientConnectCounter.WithLabelValues(stats.OnPeerUpdate).Inc()
+			//			mc.OnPeerUpdate(update, time.Now())
+			//		}
+			//	}
+			//	mc.OnPeerUpdateLock.RUnlock()
+			//}
 		}
 	})
 	if gprcErr != nil {

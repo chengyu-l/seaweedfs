@@ -13,7 +13,6 @@ import (
 
 	backoff "github.com/cenkalti/backoff/v4"
 
-	hashicorpRaft "github.com/hashicorp/raft"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 	"github.com/seaweedfs/seaweedfs/weed/sequence"
@@ -47,9 +46,9 @@ type Topology struct {
 	//RaftServer           raft.Server
 	RaftRelay            toraft.Relay
 	RaftServerAccessLock sync.RWMutex
-	HashicorpRaft        *hashicorpRaft.Raft
-	UuidAccessLock       sync.RWMutex
-	UuidMap              map[string][]string
+	//HashicorpRaft        *hashicorpRaft.Raft
+	UuidAccessLock sync.RWMutex
+	UuidMap        map[string][]string
 }
 
 func NewTopology(id string, seq sequence.Sequencer, volumeSizeLimit uint64, pulse int, replicationAsMin bool) *Topology {

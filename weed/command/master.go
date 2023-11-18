@@ -33,8 +33,8 @@ var (
 )
 
 type MasterOptions struct {
-	port              *int
-	portGrpc          *int
+	port *int
+	//portGrpc          *int
 	ip                *string
 	ipBind            *string
 	metaFolder        *string
@@ -68,7 +68,6 @@ type MasterOptions struct {
 func init() {
 	cmdMaster.Run = runMaster // break init cycle
 	m.port = cmdMaster.Flag.Int("port", 9333, "http listen port")
-	m.portGrpc = cmdMaster.Flag.Int("port.grpc", 0, "grpc listen port")
 	m.ip = cmdMaster.Flag.String("ip", util.DetectedHostAddress(), "master <ip>|<server> address, also used as identifier")
 	m.ipBind = cmdMaster.Flag.String("ip.bind", "", "ip address to bind to. If empty, default to same as -ip option.")
 	m.metaFolder = cmdMaster.Flag.String("mdir", os.TempDir(), "data directory to store meta data")
@@ -84,11 +83,8 @@ func init() {
 	m.metricsIntervalSec = cmdMaster.Flag.Int("metrics.intervalSeconds", 15, "Prometheus push interval in seconds")
 	m.metricsHttpPort = cmdMaster.Flag.Int("metricsPort", 0, "Prometheus metrics listen port")
 	m.raftResumeState = cmdMaster.Flag.Bool("resumeState", false, "resume previous state on start master server")
-	m.heartbeatInterval = cmdMaster.Flag.Duration("heartbeatInterval", 300*time.Millisecond, "heartbeat interval of master servers, and will be randomly multiplied by [1, 1.25)")
-	m.electionTimeout = cmdMaster.Flag.Duration("electionTimeout", 10*time.Second, "election timeout of master servers")
-	m.raftHashicorp = cmdMaster.Flag.Bool("raftHashicorp", false, "use hashicorp raft")
-	m.raftBootstrap = cmdMaster.Flag.Bool("raftBootstrap", false, "Whether to bootstrap the Raft cluster")
 
+	// nebulas raft
 	m.clusterId = cmdMaster.Flag.String("cluster", "", "cluster id")
 	m.LogOutputs = cmdMaster.Flag.String("raftLog-outputs", "", "Specify 'stdout' or 'stderr' to skip journald logging even when running under systemd, or list of comma separated output targets.")
 	m.LogLevel = cmdMaster.Flag.String("raftLog-level", "", "Configures log level for raft. Only supports debug, info, warn, error, panic, or fatal. Default 'info'.")
@@ -149,7 +145,7 @@ func startMaster(masterOption MasterOptions, masterWhiteList []string) {
 		*masterOption.ipBind = *masterOption.ip
 	}
 
-	_, peers := checkPeers(*masterOption.ip, *masterOption.port, *masterOption.portGrpc, *masterOption.peers)
+	_, peers := checkPeers(*masterOption.ip, *masterOption.port, *masterOption.peers)
 
 	masterPeers := make(map[string]pb.ServerAddress)
 	for _, peer := range peers {
@@ -200,9 +196,9 @@ func startGrpServer(masterOption MasterOptions, ms *weed_server.MasterServer, r 
 	return cmux_
 }
 
-func checkPeers(masterIp string, masterPort int, masterGrpcPort int, peers string) (masterAddress pb.ServerAddress, cleanedPeers []pb.ServerAddress) {
+func checkPeers(masterIp string, masterPort int, peers string) (masterAddress pb.ServerAddress, cleanedPeers []pb.ServerAddress) {
 	glog.V(0).Infof("current: %s:%d peers:%s", masterIp, masterPort, peers)
-	masterAddress = pb.NewServerAddress(masterIp, masterPort, masterGrpcPort)
+	masterAddress = pb.NewServerAddress(masterIp, masterPort, 0)
 	cleanedPeers = pb.ServerAddresses(peers).ToAddresses()
 
 	hasSelf := false
@@ -233,7 +229,7 @@ func isTheFirstOne(self pb.ServerAddress, peers []pb.ServerAddress) bool {
 }
 
 func (m *MasterOptions) toMasterOption(whiteList []string) *weed_server.MasterOption {
-	masterAddress := pb.NewServerAddress(*m.ip, *m.port, *m.portGrpc)
+	masterAddress := pb.NewServerAddress(*m.ip, *m.port, 0)
 	return &weed_server.MasterOption{
 		Master:            masterAddress,
 		MetaFolder:        *m.metaFolder,
@@ -255,17 +251,6 @@ func (m *MasterOptions) GetRaftLaunchConfig() (*raftrelay.LaunchConfig, error) {
 	cfg.Dir = util.ResolvePath(*m.metaFolder)
 	cfg.InitialCluster = *m.InitialCluster
 	cfg.ClusterState = *m.ClusterState
-	// cfg.ElectionMs =
-	// cfg.InitialElectionTickAdvance =
-	// cfg.BackendBatchInterval =
-	// cfg.BackendBatchLimit =
-	// cfg.QuotaBackendBytes =
-	// cfg.MaxTxnOps =
-	// cfg.MaxRequestBytes =
-	// cfg.InitialCluster =
-	// cfg.PreVote =
-	// cfg.ForceNewCluster =
-
 	cfg.LogLevel = *m.LogLevel
 
 	uniqueUrl := raftflags.NewUniqueURLsWithExceptions("", "")

@@ -8,11 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/seaweedfs/raft"
 	"github.com/seaweedfs/seaweedfs/weed/cluster"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb"
-	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
 	"github.com/seaweedfs/seaweedfs/weed/pb/volume_server_pb"
 
 	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
@@ -128,7 +126,7 @@ func (ms *MasterServer) LeaseAdminToken(ctx context.Context, req *master_pb.Leas
 	resp := &master_pb.LeaseAdminTokenResponse{}
 
 	if !ms.Topo.IsLeader() {
-		return resp, raft.NotLeaderError
+		return resp, fmt.Errorf("raft.Server: Not current leader")
 	}
 
 	if lastClient, lastMessage, isLocked := ms.adminLocks.isLocked(req.LockName); isLocked {
@@ -160,15 +158,15 @@ func (ms *MasterServer) Ping(ctx context.Context, req *master_pb.PingRequest) (r
 	resp = &master_pb.PingResponse{
 		StartTimeNs: time.Now().UnixNano(),
 	}
-	if req.TargetType == cluster.FilerType {
-		pingErr = pb.WithFilerClient(false, 0, pb.ServerAddress(req.Target), ms.grpcDialOption, func(client filer_pb.SeaweedFilerClient) error {
-			pingResp, err := client.Ping(ctx, &filer_pb.PingRequest{})
-			if pingResp != nil {
-				resp.RemoteTimeNs = pingResp.StartTimeNs
-			}
-			return err
-		})
-	}
+	//if req.TargetType == cluster.FilerType {
+	//	pingErr = pb.WithFilerClient(false, 0, pb.ServerAddress(req.Target), ms.grpcDialOption, func(client filer_pb.SeaweedFilerClient) error {
+	//		pingResp, err := client.Ping(ctx, &filer_pb.PingRequest{})
+	//		if pingResp != nil {
+	//			resp.RemoteTimeNs = pingResp.StartTimeNs
+	//		}
+	//		return err
+	//	})
+	//}
 	if req.TargetType == cluster.VolumeServerType {
 		pingErr = pb.WithVolumeServerClient(false, pb.ServerAddress(req.Target), ms.grpcDialOption, func(client volume_server_pb.VolumeServerClient) error {
 			pingResp, err := client.Ping(ctx, &volume_server_pb.PingRequest{})

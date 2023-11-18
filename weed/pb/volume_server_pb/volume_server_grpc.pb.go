@@ -66,8 +66,6 @@ type VolumeServerClient interface {
 	VolumeServerLeave(ctx context.Context, in *VolumeServerLeaveRequest, opts ...grpc.CallOption) (*VolumeServerLeaveResponse, error)
 	// remote storage
 	FetchAndWriteNeedle(ctx context.Context, in *FetchAndWriteNeedleRequest, opts ...grpc.CallOption) (*FetchAndWriteNeedleResponse, error)
-	// <experimental> query
-	Query(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (VolumeServer_QueryClient, error)
 	VolumeNeedleStatus(ctx context.Context, in *VolumeNeedleStatusRequest, opts ...grpc.CallOption) (*VolumeNeedleStatusResponse, error)
 	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
 }
@@ -638,38 +636,6 @@ func (c *volumeServerClient) FetchAndWriteNeedle(ctx context.Context, in *FetchA
 	return out, nil
 }
 
-func (c *volumeServerClient) Query(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (VolumeServer_QueryClient, error) {
-	stream, err := c.cc.NewStream(ctx, &VolumeServer_ServiceDesc.Streams[9], "/volume_server_pb.VolumeServer/Query", opts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &volumeServerQueryClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-type VolumeServer_QueryClient interface {
-	Recv() (*QueriedStripe, error)
-	grpc.ClientStream
-}
-
-type volumeServerQueryClient struct {
-	grpc.ClientStream
-}
-
-func (x *volumeServerQueryClient) Recv() (*QueriedStripe, error) {
-	m := new(QueriedStripe)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
 func (c *volumeServerClient) VolumeNeedleStatus(ctx context.Context, in *VolumeNeedleStatusRequest, opts ...grpc.CallOption) (*VolumeNeedleStatusResponse, error) {
 	out := new(VolumeNeedleStatusResponse)
 	err := c.cc.Invoke(ctx, "/volume_server_pb.VolumeServer/VolumeNeedleStatus", in, out, opts...)
@@ -736,8 +702,6 @@ type VolumeServerServer interface {
 	VolumeServerLeave(context.Context, *VolumeServerLeaveRequest) (*VolumeServerLeaveResponse, error)
 	// remote storage
 	FetchAndWriteNeedle(context.Context, *FetchAndWriteNeedleRequest) (*FetchAndWriteNeedleResponse, error)
-	// <experimental> query
-	Query(*QueryRequest, VolumeServer_QueryServer) error
 	VolumeNeedleStatus(context.Context, *VolumeNeedleStatusRequest) (*VolumeNeedleStatusResponse, error)
 	Ping(context.Context, *PingRequest) (*PingResponse, error)
 	mustEmbedUnimplementedVolumeServerServer()
@@ -863,9 +827,6 @@ func (UnimplementedVolumeServerServer) VolumeServerLeave(context.Context, *Volum
 }
 func (UnimplementedVolumeServerServer) FetchAndWriteNeedle(context.Context, *FetchAndWriteNeedleRequest) (*FetchAndWriteNeedleResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FetchAndWriteNeedle not implemented")
-}
-func (UnimplementedVolumeServerServer) Query(*QueryRequest, VolumeServer_QueryServer) error {
-	return status.Errorf(codes.Unimplemented, "method Query not implemented")
 }
 func (UnimplementedVolumeServerServer) VolumeNeedleStatus(context.Context, *VolumeNeedleStatusRequest) (*VolumeNeedleStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method VolumeNeedleStatus not implemented")
@@ -1615,27 +1576,6 @@ func _VolumeServer_FetchAndWriteNeedle_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
-func _VolumeServer_Query_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(QueryRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(VolumeServerServer).Query(m, &volumeServerQueryServer{stream})
-}
-
-type VolumeServer_QueryServer interface {
-	Send(*QueriedStripe) error
-	grpc.ServerStream
-}
-
-type volumeServerQueryServer struct {
-	grpc.ServerStream
-}
-
-func (x *volumeServerQueryServer) Send(m *QueriedStripe) error {
-	return x.ServerStream.SendMsg(m)
-}
-
 func _VolumeServer_VolumeNeedleStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(VolumeNeedleStatusRequest)
 	if err := dec(in); err != nil {
@@ -1852,11 +1792,6 @@ var VolumeServer_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "VolumeTierMoveDatFromRemote",
 			Handler:       _VolumeServer_VolumeTierMoveDatFromRemote_Handler,
-			ServerStreams: true,
-		},
-		{
-			StreamName:    "Query",
-			Handler:       _VolumeServer_Query_Handler,
 			ServerStreams: true,
 		},
 	},

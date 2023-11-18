@@ -35,20 +35,20 @@ service Seaweed {
   }
   rpc GetMasterConfiguration (GetMasterConfigurationRequest) returns (GetMasterConfigurationResponse) {
   }
-  rpc ListClusterNodes (ListClusterNodesRequest) returns (ListClusterNodesResponse) {
-  }
+//  rpc ListClusterNodes (ListClusterNodesRequest) returns (ListClusterNodesResponse) {
+//  }
   rpc LeaseAdminToken (LeaseAdminTokenRequest) returns (LeaseAdminTokenResponse) {
   }
   rpc ReleaseAdminToken (ReleaseAdminTokenRequest) returns (ReleaseAdminTokenResponse) {
   }
   rpc Ping (PingRequest) returns (PingResponse) {
   }
-  rpc RaftListClusterServers (RaftListClusterServersRequest) returns (RaftListClusterServersResponse) {
-  }
-  rpc RaftAddServer (RaftAddServerRequest) returns (RaftAddServerResponse) {
-  }
-  rpc RaftRemoveServer (RaftRemoveServerRequest) returns (RaftRemoveServerResponse) {
-  }
+//  rpc RaftListClusterServers (RaftListClusterServersRequest) returns (RaftListClusterServersResponse) {
+//  }
+//  rpc RaftAddServer (RaftAddServerRequest) returns (RaftAddServerResponse) {
+//  }
+//  rpc RaftRemoveServer (RaftRemoveServerRequest) returns (RaftRemoveServerResponse) {
+//  }
 }
 
 //////////////////////////////////////////////////
@@ -366,23 +366,23 @@ message GetMasterConfigurationResponse {
   bool volume_preallocate = 7;
 }
 
-message ListClusterNodesRequest {
-  string client_type = 1;
-  string filer_group = 2;
-  bool is_leader_only = 3;
-  int32 limit = 4;
-}
-message ListClusterNodesResponse {
-  message ClusterNode {
-    string address = 1;
-    string version = 2;
-    bool is_leader = 3;
-    int64 created_at_ns = 4;
-    string data_center = 5;
-    string rack = 6;
-  }
-  repeated ClusterNode cluster_nodes = 1;
-}
+//message ListClusterNodesRequest {
+//  string client_type = 1;
+//  string filer_group = 2;
+//  bool is_leader_only = 3;
+//  int32 limit = 4;
+//}
+//message ListClusterNodesResponse {
+//  message ClusterNode {
+//    string address = 1;
+//    string version = 2;
+//    bool is_leader = 3;
+//    int64 created_at_ns = 4;
+//    string data_center = 5;
+//    string rack = 6;
+//  }
+//  repeated ClusterNode cluster_nodes = 1;
+//}
 
 message LeaseAdminTokenRequest {
   int64 previous_token = 1;
@@ -414,29 +414,29 @@ message PingResponse {
   int64 stop_time_ns = 3;
 }
 
-message RaftAddServerRequest {
-  string id = 1;
-  string address = 2;
-  bool voter = 3;
-}
-message RaftAddServerResponse {
-}
-
-message RaftRemoveServerRequest {
-  string id = 1;
-  bool force = 2;
-}
-message RaftRemoveServerResponse {
-}
-
-message RaftListClusterServersRequest {
-}
-message RaftListClusterServersResponse {
-  message ClusterServers {
-    string id = 1;
-    string address = 2;
-    string suffrage = 3;
-    bool   isLeader = 4;
-  }
-  repeated ClusterServers cluster_servers = 1;
-}
+//message RaftAddServerRequest {
+//  string id = 1;
+//  string address = 2;
+//  bool voter = 3;
+//}
+//message RaftAddServerResponse {
+//}
+//
+//message RaftRemoveServerRequest {
+//  string id = 1;
+//  bool force = 2;
+//}
+//message RaftRemoveServerResponse {
+//}
+//
+//message RaftListClusterServersRequest {
+//}
+//message RaftListClusterServersResponse {
+//  message ClusterServers {
+//    string id = 1;
+//    string address = 2;
+//    string suffrage = 3;
+//    bool   isLeader = 4;
+//  }
+//  repeated ClusterServers cluster_servers = 1;
+//}

@@ -18,9 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 
-	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
 	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
-	"github.com/seaweedfs/seaweedfs/weed/pb/mq_pb"
 )
 
 const (
@@ -225,14 +223,6 @@ func WithVolumeServerClient(streamingMode bool, volumeServer ServerAddress, grpc
 
 }
 
-func WithBrokerClient(streamingMode bool, broker ServerAddress, grpcDialOption grpc.DialOption, fn func(client mq_pb.SeaweedMessagingClient) error) error {
-	return WithGrpcClient(streamingMode, 0, func(grpcConnection *grpc.ClientConn) error {
-		client := mq_pb.NewSeaweedMessagingClient(grpcConnection)
-		return fn(client)
-	}, broker.ToGrpcAddress(), false, grpcDialOption)
-
-}
-
 func WithOneOfGrpcMasterClients(streamingMode bool, masterGrpcAddresses map[string]ServerAddress, grpcDialOption grpc.DialOption, fn func(client master_pb.SeaweedClient) error) (err error) {
 
 	for _, masterGrpcAddress := range masterGrpcAddresses {
@@ -240,45 +230,6 @@ func WithOneOfGrpcMasterClients(streamingMode bool, masterGrpcAddresses map[stri
 			client := master_pb.NewSeaweedClient(grpcConnection)
 			return fn(client)
 		}, masterGrpcAddress.ToGrpcAddress(), false, grpcDialOption)
-		if err == nil {
-			return nil
-		}
-	}
-
-	return err
-}
-
-func WithBrokerGrpcClient(streamingMode bool, brokerGrpcAddress string, grpcDialOption grpc.DialOption, fn func(client mq_pb.SeaweedMessagingClient) error) error {
-
-	return WithGrpcClient(streamingMode, 0, func(grpcConnection *grpc.ClientConn) error {
-		client := mq_pb.NewSeaweedMessagingClient(grpcConnection)
-		return fn(client)
-	}, brokerGrpcAddress, false, grpcDialOption)
-
-}
-
-func WithFilerClient(streamingMode bool, signature int32, filer ServerAddress, grpcDialOption grpc.DialOption, fn func(client filer_pb.SeaweedFilerClient) error) error {
-
-	return WithGrpcFilerClient(streamingMode, signature, filer, grpcDialOption, fn)
-
-}
-
-func WithGrpcFilerClient(streamingMode bool, signature int32, filerGrpcAddress ServerAddress, grpcDialOption grpc.DialOption, fn func(client filer_pb.SeaweedFilerClient) error) error {
-
-	return WithGrpcClient(streamingMode, signature, func(grpcConnection *grpc.ClientConn) error {
-		client := filer_pb.NewSeaweedFilerClient(grpcConnection)
-		return fn(client)
-	}, filerGrpcAddress.ToGrpcAddress(), false, grpcDialOption)
-
-}
-
-func WithOneOfGrpcFilerClients(streamingMode bool, filerAddresses []ServerAddress, grpcDialOption grpc.DialOption, fn func(client filer_pb.SeaweedFilerClient) error) (err error) {
-
-	for _, filerAddress := range filerAddresses {
-		err = WithGrpcClient(streamingMode, 0, func(grpcConnection *grpc.ClientConn) error {
-			client := filer_pb.NewSeaweedFilerClient(grpcConnection)
-			return fn(client)
-		}, filerAddress.ToGrpcAddress(), false, grpcDialOption)
 		if err == nil {
 			return nil
 		}

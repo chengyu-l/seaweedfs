@@ -3,7 +3,6 @@ package azure
 import (
 	"context"
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/s3api/s3_constants"
 	"io"
 	"net/url"
 	"os"
@@ -11,11 +10,14 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
-	"github.com/seaweedfs/seaweedfs/weed/filer"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
 	"github.com/seaweedfs/seaweedfs/weed/pb/remote_pb"
 	"github.com/seaweedfs/seaweedfs/weed/remote_storage"
 	"github.com/seaweedfs/seaweedfs/weed/util"
+)
+
+const (
+	AmzUserMetaPrefix = "X-Amz-Meta-"
 )
 
 func init() {
@@ -144,7 +146,7 @@ func (az *azureRemoteStorageClient) WriteFile(loc *remote_pb.RemoteStorageLocati
 	if !ok {
 		return nil, fmt.Errorf("unexpected reader: readerAt expected")
 	}
-	fileSize := int64(filer.FileSize(entry))
+	fileSize := int64(filer_pb.FileSize(entry))
 
 	_, err = uploadReaderAtToBlockBlob(context.Background(), readerAt, fileSize, blobURL, azblob.UploadToBlockBlobOptions{
 		BlockSize:       4 * 1024 * 1024,
@@ -183,8 +185,8 @@ func (az *azureRemoteStorageClient) readFileRemoteEntry(loc *remote_pb.RemoteSto
 func toMetadata(attributes map[string][]byte) map[string]string {
 	metadata := make(map[string]string)
 	for k, v := range attributes {
-		if strings.HasPrefix(k, s3_constants.AmzUserMetaPrefix) {
-			metadata[k[len(s3_constants.AmzUserMetaPrefix):]] = string(v)
+		if strings.HasPrefix(k, AmzUserMetaPrefix) {
+			metadata[k[len(AmzUserMetaPrefix):]] = string(v)
 		}
 	}
 	parsed_metadata := make(map[string]string)

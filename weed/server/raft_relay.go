@@ -18,6 +18,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
+var NotLeaderError = errors.New("raft.Server: Not current leader")
+
 type RaftRelay struct {
 	Relay     toraft.Relay
 	clusterId string

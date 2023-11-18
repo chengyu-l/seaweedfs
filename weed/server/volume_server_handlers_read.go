@@ -19,7 +19,6 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/util/mem"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
-	"github.com/seaweedfs/seaweedfs/weed/images"
 	"github.com/seaweedfs/seaweedfs/weed/operation"
 	"github.com/seaweedfs/seaweedfs/weed/storage"
 	"github.com/seaweedfs/seaweedfs/weed/storage/needle"
@@ -205,15 +204,16 @@ func (vs *VolumeServer) GetOrHeadHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	if n.IsCompressed() {
-		_, _, _, shouldResize := shouldResizeImages(ext, r)
-		_, _, _, _, shouldCrop := shouldCropImages(ext, r)
-		if shouldResize || shouldCrop {
-			if n.Data, err = util.DecompressData(n.Data); err != nil {
-				glog.V(0).Infoln("ungzip error:", err, r.URL.Path)
-			}
-			// } else if strings.Contains(r.Header.Get("Accept-Encoding"), "zstd") && util.IsZstdContent(n.Data) {
-			//	w.Header().Set("Content-Encoding", "zstd")
-		} else if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") && util.IsGzippedContent(n.Data) {
+		//_, _, _, shouldResize := shouldResizeImages(ext, r)
+		//_, _, _, _, shouldCrop := shouldCropImages(ext, r)
+		//if shouldResize || shouldCrop {
+		//	if n.Data, err = util.DecompressData(n.Data); err != nil {
+		//		glog.V(0).Infoln("ungzip error:", err, r.URL.Path)
+		//	}
+		//	// } else if strings.Contains(r.Header.Get("Accept-Encoding"), "zstd") && util.IsZstdContent(n.Data) {
+		//	//	w.Header().Set("Content-Encoding", "zstd")
+		//} else
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") && util.IsGzippedContent(n.Data) {
 			w.Header().Set("Content-Encoding", "gzip")
 		} else {
 			if n.Data, err = util.DecompressData(n.Data); err != nil {
@@ -223,9 +223,9 @@ func (vs *VolumeServer) GetOrHeadHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	if !readOption.IsMetaOnly {
-		rs := conditionallyCropImages(bytes.NewReader(n.Data), ext, r)
-		rs = conditionallyResizeImages(rs, ext, r)
-		if e := writeResponseContent(filename, mtype, rs, w, r); e != nil {
+		//rs := conditionallyCropImages(bytes.NewReader(n.Data), ext, r)
+		//rs = conditionallyResizeImages(rs, ext, r)
+		if e := writeResponseContent(filename, mtype, bytes.NewReader(n.Data), w, r); e != nil {
 			glog.V(2).Infoln("response write error:", e)
 		}
 	} else {
@@ -243,11 +243,11 @@ func shouldAttemptStreamWrite(hasLocalVolume bool, ext string, r *http.Request) 
 	if r.Method == "HEAD" {
 		return true, true
 	}
-	_, _, _, shouldResize := shouldResizeImages(ext, r)
-	_, _, _, _, shouldCrop := shouldCropImages(ext, r)
-	if shouldResize || shouldCrop {
-		return false, false
-	}
+	//_, _, _, shouldResize := shouldResizeImages(ext, r)
+	//_, _, _, _, shouldCrop := shouldCropImages(ext, r)
+	//if shouldResize || shouldCrop {
+	//	return false, false
+	//}
 	return true, false
 }
 
@@ -282,75 +282,76 @@ func (vs *VolumeServer) tryHandleChunkedFile(n *needle.Needle, fileName string, 
 	chunkedFileReader := operation.NewChunkedFileReader(chunkManifest.Chunks, vs.GetMaster(), vs.grpcDialOption)
 	defer chunkedFileReader.Close()
 
-	rs := conditionallyCropImages(chunkedFileReader, ext, r)
-	rs = conditionallyResizeImages(rs, ext, r)
+	//rs := conditionallyCropImages(chunkedFileReader, ext, r)
+	//rs = conditionallyResizeImages(rs, ext, r)
 
-	if e := writeResponseContent(fileName, mType, rs, w, r); e != nil {
+	if e := writeResponseContent(fileName, mType, chunkedFileReader, w, r); e != nil {
 		glog.V(2).Infoln("response write error:", e)
 	}
 	return true
 }
 
-func conditionallyResizeImages(originalDataReaderSeeker io.ReadSeeker, ext string, r *http.Request) io.ReadSeeker {
-	rs := originalDataReaderSeeker
-	if len(ext) > 0 {
-		ext = strings.ToLower(ext)
-	}
-	width, height, mode, shouldResize := shouldResizeImages(ext, r)
-	if shouldResize {
-		rs, _, _ = images.Resized(ext, originalDataReaderSeeker, width, height, mode)
-	}
-	return rs
-}
-
-func shouldResizeImages(ext string, r *http.Request) (width, height int, mode string, shouldResize bool) {
-	if ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" || ext == ".webp" {
-		if r.FormValue("width") != "" {
-			width, _ = strconv.Atoi(r.FormValue("width"))
-		}
-		if r.FormValue("height") != "" {
-			height, _ = strconv.Atoi(r.FormValue("height"))
-		}
-	}
-	mode = r.FormValue("mode")
-	shouldResize = width > 0 || height > 0
-	return
-}
-
-func conditionallyCropImages(originalDataReaderSeeker io.ReadSeeker, ext string, r *http.Request) io.ReadSeeker {
-	rs := originalDataReaderSeeker
-	if len(ext) > 0 {
-		ext = strings.ToLower(ext)
-	}
-	x1, y1, x2, y2, shouldCrop := shouldCropImages(ext, r)
-	if shouldCrop {
-		var err error
-		rs, err = images.Cropped(ext, rs, x1, y1, x2, y2)
-		if err != nil {
-			glog.Errorf("Cropping images error: %s", err)
-		}
-	}
-	return rs
-}
-
-func shouldCropImages(ext string, r *http.Request) (x1, y1, x2, y2 int, shouldCrop bool) {
-	if ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" {
-		if r.FormValue("crop_x1") != "" {
-			x1, _ = strconv.Atoi(r.FormValue("crop_x1"))
-		}
-		if r.FormValue("crop_y1") != "" {
-			y1, _ = strconv.Atoi(r.FormValue("crop_y1"))
-		}
-		if r.FormValue("crop_x2") != "" {
-			x2, _ = strconv.Atoi(r.FormValue("crop_x2"))
-		}
-		if r.FormValue("crop_y2") != "" {
-			y2, _ = strconv.Atoi(r.FormValue("crop_y2"))
-		}
-	}
-	shouldCrop = x1 >= 0 && y1 >= 0 && x2 > x1 && y2 > y1
-	return
-}
+//
+//func conditionallyResizeImages(originalDataReaderSeeker io.ReadSeeker, ext string, r *http.Request) io.ReadSeeker {
+//	rs := originalDataReaderSeeker
+//	if len(ext) > 0 {
+//		ext = strings.ToLower(ext)
+//	}
+//	width, height, mode, shouldResize := shouldResizeImages(ext, r)
+//	if shouldResize {
+//		rs, _, _ = images.Resized(ext, originalDataReaderSeeker, width, height, mode)
+//	}
+//	return rs
+//}
+//
+//func shouldResizeImages(ext string, r *http.Request) (width, height int, mode string, shouldResize bool) {
+//	if ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" || ext == ".webp" {
+//		if r.FormValue("width") != "" {
+//			width, _ = strconv.Atoi(r.FormValue("width"))
+//		}
+//		if r.FormValue("height") != "" {
+//			height, _ = strconv.Atoi(r.FormValue("height"))
+//		}
+//	}
+//	mode = r.FormValue("mode")
+//	shouldResize = width > 0 || height > 0
+//	return
+//}
+//
+//func conditionallyCropImages(originalDataReaderSeeker io.ReadSeeker, ext string, r *http.Request) io.ReadSeeker {
+//	rs := originalDataReaderSeeker
+//	if len(ext) > 0 {
+//		ext = strings.ToLower(ext)
+//	}
+//	x1, y1, x2, y2, shouldCrop := shouldCropImages(ext, r)
+//	if shouldCrop {
+//		var err error
+//		rs, err = images.Cropped(ext, rs, x1, y1, x2, y2)
+//		if err != nil {
+//			glog.Errorf("Cropping images error: %s", err)
+//		}
+//	}
+//	return rs
+//}
+//
+//func shouldCropImages(ext string, r *http.Request) (x1, y1, x2, y2 int, shouldCrop bool) {
+//	if ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" {
+//		if r.FormValue("crop_x1") != "" {
+//			x1, _ = strconv.Atoi(r.FormValue("crop_x1"))
+//		}
+//		if r.FormValue("crop_y1") != "" {
+//			y1, _ = strconv.Atoi(r.FormValue("crop_y1"))
+//		}
+//		if r.FormValue("crop_x2") != "" {
+//			x2, _ = strconv.Atoi(r.FormValue("crop_x2"))
+//		}
+//		if r.FormValue("crop_y2") != "" {
+//			y2, _ = strconv.Atoi(r.FormValue("crop_y2"))
+//		}
+//	}
+//	shouldCrop = x1 >= 0 && y1 >= 0 && x2 > x1 && y2 > y1
+//	return
+//}
 
 func writeResponseContent(filename, mimeType string, rs io.ReadSeeker, w http.ResponseWriter, r *http.Request) error {
 	totalSize, e := rs.Seek(0, 2)

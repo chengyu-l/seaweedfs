@@ -37,7 +37,6 @@ var (
 
 type VolumeServerOptions struct {
 	port                      *int
-	portGrpc                  *int
 	publicPort                *int
 	folders                   []string
 	folderMaxLimits           []int32
@@ -53,7 +52,6 @@ type VolumeServerOptions struct {
 	whiteList                 []string
 	indexType                 *string
 	diskType                  *string
-	fixJpgOrientation         *bool
 	readMode                  *string
 	cpuProfile                *string
 	memProfile                *string
@@ -74,7 +72,6 @@ type VolumeServerOptions struct {
 func init() {
 	cmdVolume.Run = runVolume // break init cycle
 	v.port = cmdVolume.Flag.Int("port", 8080, "http listen port")
-	v.portGrpc = cmdVolume.Flag.Int("port.grpc", 0, "grpc listen port")
 	v.publicPort = cmdVolume.Flag.Int("port.public", 0, "port opened to public")
 	v.ip = cmdVolume.Flag.String("ip", util.DetectedHostAddress(), "ip or server name, also used as identifier")
 	v.publicUrl = cmdVolume.Flag.String("publicUrl", "", "Publicly accessible address")
@@ -87,7 +84,6 @@ func init() {
 	v.rack = cmdVolume.Flag.String("rack", "", "current volume server's rack name")
 	v.indexType = cmdVolume.Flag.String("index", "memory", "Choose [memory|leveldb|leveldbMedium|leveldbLarge] mode for memory~performance balance.")
 	v.diskType = cmdVolume.Flag.String("disk", "", "[hdd|ssd|<tag>] hard drive or solid state drive or any tag")
-	v.fixJpgOrientation = cmdVolume.Flag.Bool("images.fix.orientation", false, "Adjust jpg orientation when uploading.")
 	v.readMode = cmdVolume.Flag.String("readMode", "proxy", "[local|proxy|redirect] how to deal with non-local volume: 'not found|proxy to remote node|redirect volume location'.")
 	v.cpuProfile = cmdVolume.Flag.String("cpuprofile", "", "cpu profile output file")
 	v.memProfile = cmdVolume.Flag.String("memprofile", "", "memory profile output file")
@@ -205,9 +201,7 @@ func (v VolumeServerOptions) startVolumeServer(volumeFolders, maxVolumeCounts, v
 	if *v.publicPort == 0 {
 		*v.publicPort = *v.port
 	}
-	if *v.portGrpc == 0 {
-		*v.portGrpc = 10000 + *v.port
-	}
+
 	if *v.publicUrl == "" {
 		*v.publicUrl = util.JoinHostPort(*v.ip, *v.publicPort)
 	}
@@ -236,14 +230,15 @@ func (v VolumeServerOptions) startVolumeServer(volumeFolders, maxVolumeCounts, v
 		volumeNeedleMapKind = storage.NeedleMapLevelDbLarge
 	}
 
+	portGrpc := *v.port
 	volumeServer := weed_server.NewVolumeServer(volumeMux, publicVolumeMux,
-		*v.ip, *v.port, *v.portGrpc, *v.publicUrl,
+		*v.ip, *v.port, portGrpc, *v.publicUrl,
 		v.folders, v.folderMaxLimits, minFreeSpaces, diskTypes,
 		*v.idxFolder,
 		volumeNeedleMapKind,
-		v.masters, 5, *v.dataCenter, *v.rack,
-		v.whiteList,
-		*v.fixJpgOrientation, *v.readMode,
+		v.masters, 5,
+		*v.dataCenter, *v.rack,
+		v.whiteList, *v.readMode,
 		*v.compactionMBPerSecond,
 		*v.fileSizeLimitMB,
 		int64(*v.concurrentUploadLimitMB)*1024*1024,
@@ -321,7 +316,7 @@ func (v VolumeServerOptions) isSeparatedPublicPort() bool {
 }
 
 func (v VolumeServerOptions) startGrpcService(vs volume_server_pb.VolumeServerServer) *grpc.Server {
-	grpcPort := *v.portGrpc
+	grpcPort := *v.port
 	grpcL, err := util.NewListener(util.JoinHostPort(*v.bindIp, grpcPort), 0)
 	if err != nil {
 		glog.Fatalf("failed to listen on grpc port %d: %v", grpcPort, err)

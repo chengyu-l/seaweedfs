@@ -42,7 +42,6 @@ type VolumeServer struct {
 
 	needleMapKind           storage.NeedleMapKind
 	ldbTimout               int64
-	FixJpgOrientation       bool
 	ReadMode                string
 	compactionBytePerSecond int64
 	metricsAddress          string
@@ -60,7 +59,6 @@ func NewVolumeServer(adminMux, publicMux *http.ServeMux, ip string,
 	masterNodes []pb.ServerAddress, pulseSeconds int,
 	dataCenter string, rack string,
 	whiteList []string,
-	fixJpgOrientation bool,
 	readMode string,
 	compactionMBPerSecond int,
 	fileSizeLimitMB int,
@@ -87,7 +85,6 @@ func NewVolumeServer(adminMux, publicMux *http.ServeMux, ip string,
 		dataCenter:                    dataCenter,
 		rack:                          rack,
 		needleMapKind:                 needleMapKind,
-		FixJpgOrientation:             fixJpgOrientation,
 		ReadMode:                      readMode,
 		grpcDialOption:                security.LoadClientTLS(util.GetViper(), "grpc.volume"),
 		compactionBytePerSecond:       int64(compactionMBPerSecond) * 1024 * 1024,

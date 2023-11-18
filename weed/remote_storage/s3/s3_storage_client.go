@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
-	"github.com/seaweedfs/seaweedfs/weed/filer"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
 	"github.com/seaweedfs/seaweedfs/weed/pb/remote_pb"
 	"github.com/seaweedfs/seaweedfs/weed/remote_storage"
@@ -145,7 +144,7 @@ func (s *s3RemoteStorageClient) RemoveDirectory(loc *remote_pb.RemoteStorageLoca
 
 func (s *s3RemoteStorageClient) WriteFile(loc *remote_pb.RemoteStorageLocation, entry *filer_pb.Entry, reader io.Reader) (remoteEntry *filer_pb.RemoteEntry, err error) {
 
-	fileSize := int64(filer.FileSize(entry))
+	fileSize := int64(filer_pb.FileSize(entry))
 
 	partSize := int64(8 * 1024 * 1024) // The minimum/default allowed part size is 5MB
 	for partSize*1000 < fileSize {
