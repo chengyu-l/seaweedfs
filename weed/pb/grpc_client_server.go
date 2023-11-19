@@ -191,7 +191,8 @@ func ServerToGrpcAddress(server string) (serverGrpcAddress string) {
 		glog.Fatalf("server address %s parse error: %v", server, parseErr)
 	}
 
-	grpcPort := int(port) + 10000
+	//grpcPort := int(port) + 10000
+	grpcPort := int(port)
 
 	return util.JoinHostPort(host, grpcPort)
 }
@@ -202,7 +203,8 @@ func GrpcAddressToServerAddress(grpcAddress string) (serverAddress string) {
 		glog.Fatalf("server grpc address %s parse error: %v", grpcAddress, parseErr)
 	}
 
-	port := int(grpcPort) - 10000
+	//port := int(grpcPort) - 10000
+	port := int(grpcPort)
 
 	return util.JoinHostPort(host, port)
 }
