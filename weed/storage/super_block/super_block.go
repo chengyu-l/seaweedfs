@@ -32,7 +32,7 @@ type SuperBlock struct {
 
 func (s *SuperBlock) BlockSize() int {
 	switch s.Version {
-	case needle.Version2, needle.Version3:
+	case needle.Version2, needle.Version3, needle.Version4:
 		return SuperBlockSize + int(s.ExtraSize)
 	}
 	return SuperBlockSize

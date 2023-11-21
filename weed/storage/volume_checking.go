@@ -96,7 +96,7 @@ func verifyNeedleIntegrity(datFile backend.BackendStorageFile, v needle.Version,
 	if n.Size != size {
 		return 0, ErrorSizeMismatch
 	}
-	if v == needle.Version3 {
+	if v == needle.Version4 {
 		bytes := make([]byte, TimestampSize)
 		_, err = datFile.ReadAt(bytes, offset+NeedleHeaderSize+int64(size)+needle.NeedleChecksumSize)
 		if err == io.EOF {

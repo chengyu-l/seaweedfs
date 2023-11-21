@@ -34,7 +34,7 @@ func (n *Needle) prepareWriteBuffer(version Version, writeBytes *bytes.Buffer) (
 		util.Uint32toBytes(header[0:NeedleChecksumSize], uint32(n.Checksum))
 		writeBytes.Write(header[0 : NeedleChecksumSize+padding])
 		return size, actualSize, nil
-	case Version2, Version3:
+	case Version2, Version3, Version4:
 		header := make([]byte, NeedleHeaderSize+TimestampSize) // adding timestamp to reuse it and avoid extra allocation
 		CookieToBytes(header[0:CookieSize], n.Cookie)
 		NeedleIdToBytes(header[CookieSize:CookieSize+NeedleIdSize], n.Id)
@@ -98,7 +98,7 @@ func (n *Needle) prepareWriteBuffer(version Version, writeBytes *bytes.Buffer) (
 		}
 		padding := PaddingLength(n.Size, version)
 		util.Uint32toBytes(header[0:NeedleChecksumSize], uint32(n.Checksum))
-		if version == Version2 {
+		if version == Version2 || version == Version3 {
 			writeBytes.Write(header[0 : NeedleChecksumSize+padding])
 		} else {
 			// version3
@@ -160,7 +160,7 @@ func WriteNeedleBlob(w backend.BackendStorageFile, dataSlice []byte, size Size, 
 		return
 	}
 
-	if version == Version3 {
+	if version == Version4 {
 		tsOffset := NeedleHeaderSize + size + NeedleChecksumSize
 		util.Uint64toBytes(dataSlice[tsOffset:tsOffset+TimestampSize], appendAtNs)
 	}

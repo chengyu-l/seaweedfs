@@ -64,7 +64,7 @@ func (n *Needle) ReadBytes(bytes []byte, offset int64, size Size, version Versio
 	switch version {
 	case Version1:
 		n.Data = bytes[NeedleHeaderSize : NeedleHeaderSize+size]
-	case Version2, Version3:
+	case Version2, Version3, Version4:
 		err = n.readNeedleDataVersion2(bytes[NeedleHeaderSize : NeedleHeaderSize+int(n.Size)])
 	}
 	if err != nil && err != io.EOF {
@@ -80,7 +80,7 @@ func (n *Needle) ReadBytes(bytes []byte, offset int64, size Size, version Versio
 		}
 		n.Checksum = newChecksum
 	}
-	if version == Version3 {
+	if version == Version4 {
 		tsOffset := NeedleHeaderSize + size + NeedleChecksumSize
 		n.AppendAtNs = util.BytesToUint64(bytes[tsOffset : tsOffset+TimestampSize])
 	}
@@ -179,7 +179,7 @@ func (n *Needle) readNeedleDataVersion2NonData(bytes []byte) (index int, err err
 
 func ReadNeedleHeader(r backend.BackendStorageFile, version Version, offset int64) (n *Needle, bytes []byte, bodyLength int64, err error) {
 	n = new(Needle)
-	if version == Version1 || version == Version2 || version == Version3 {
+	if version == Version1 || version == Version2 || version == Version3 || version == Version4 {
 		bytes = make([]byte, NeedleHeaderSize)
 
 		var count int
@@ -196,7 +196,7 @@ func ReadNeedleHeader(r backend.BackendStorageFile, version Version, offset int6
 }
 
 func PaddingLength(needleSize Size, version Version) Size {
-	if version == Version3 {
+	if version == Version4 {
 		// this is same value as version2, but just listed here for clarity
 		return NeedlePaddingSize - ((NeedleHeaderSize + needleSize + NeedleChecksumSize + TimestampSize) % NeedlePaddingSize)
 	}
@@ -204,7 +204,7 @@ func PaddingLength(needleSize Size, version Version) Size {
 }
 
 func NeedleBodyLength(needleSize Size, version Version) int64 {
-	if version == Version3 {
+	if version == Version4 {
 		return int64(needleSize) + NeedleChecksumSize + TimestampSize + int64(PaddingLength(needleSize, version))
 	}
 	return int64(needleSize) + NeedleChecksumSize + int64(PaddingLength(needleSize, version))
@@ -236,11 +236,11 @@ func (n *Needle) ReadNeedleBodyBytes(needleBody []byte, version Version) (err er
 	case Version1:
 		n.Data = needleBody[:n.Size]
 		n.Checksum = NewCRC(n.Data)
-	case Version2, Version3:
+	case Version2, Version3, Version4:
 		err = n.readNeedleDataVersion2(needleBody[0:n.Size])
 		n.Checksum = NewCRC(n.Data)
 
-		if version == Version3 {
+		if version == Version4 {
 			tsOffset := n.Size + NeedleChecksumSize
 			n.AppendAtNs = util.BytesToUint64(needleBody[tsOffset : tsOffset+TimestampSize])
 		}
