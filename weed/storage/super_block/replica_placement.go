@@ -12,6 +12,13 @@ type ReplicaPlacement struct {
 }
 
 func NewReplicaPlacementFromString(t string) (*ReplicaPlacement, error) {
+	//
+	if t == "010" {
+		t = "001"
+	} else if t == "020" {
+		t = "002"
+	}
+
 	rp := &ReplicaPlacement{}
 	for i, c := range t {
 		count := int(c - '0')

@@ -36,10 +36,17 @@ func AllocateVolume(dn *DataNode, grpcDialOption grpc.DialOption, vid needle.Vol
 	//})
 
 	// 为了升级master, 临时采用HTTP接口创建Volume。等Master和VolumeServer完成升级后，将会再次升级，删除该代码
+	rp := option.ReplicaPlacement.String()
+	if rp == "001" {
+		rp = "010"
+	} else if rp == "002" {
+		rp = "020"
+	}
+
 	values := make(url.Values)
 	values.Add("volume", vid.String())
 	values.Add("collection", option.Collection)
-	values.Add("replication", option.ReplicaPlacement.String())
+	values.Add("replication", rp)
 	values.Add("ttl", option.Ttl.String())
 	values.Add("preallocate", fmt.Sprintf("%d", option.Preallocate))
 	jsonBlob, err := util.Post("http://"+string(dn.ServerAddress())+"/admin/assign_volume", values)

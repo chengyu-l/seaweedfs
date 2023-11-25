@@ -143,6 +143,10 @@ func (ms *MasterServer) getVolumeGrowOption(r *http.Request) (*topology.VolumeGr
 
 	// nebulas 010 两副本; 020 三副本，在新版本暂时都用三副本代替。在新版本中两副本应为 001; 三副本应为002
 	if replicationString == "010" {
+		replicationString = "001"
+	}
+
+	if replicationString == "020" {
 		replicationString = "002"
 	}
 

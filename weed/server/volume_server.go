@@ -1,7 +1,9 @@
 package weed_server
 
 import (
+	"github.com/seaweedfs/seaweedfs/weed/storage/needle"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -110,6 +112,8 @@ func NewVolumeServer(adminMux, publicMux *http.ServeMux, ip string,
 	handleStaticResources(adminMux)
 	adminMux.HandleFunc("/status", vs.statusHandler)
 	adminMux.HandleFunc("/healthz", vs.healthzHandler)
+	// 为了兼容老版本，下个版本会删除
+	adminMux.HandleFunc("/admin/assign_volume", vs.assignVolumeHandler)
 	if signingKey == "" || enableUiAccess {
 		// only expose the volume server details for safe environments
 		adminMux.HandleFunc("/ui/index.html", vs.uiStatusHandler)
@@ -146,4 +150,50 @@ func (vs *VolumeServer) Shutdown() {
 	glog.V(0).Infoln("Shutting down volume server...")
 	vs.store.Close()
 	glog.V(0).Infoln("Shut down successfully!")
+}
+
+// 该函数是为了兼容 nebulas 老版本
+func (vs *VolumeServer) assignVolumeHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	preallocate := int64(0)
+	if r.FormValue("preallocate") != "" {
+		preallocate, err = strconv.ParseInt(r.FormValue("preallocate"), 10, 64)
+		if err != nil {
+			glog.V(0).Infof("ignoring invalid int64 value for preallocate = %v\n", r.FormValue("preallocate"))
+		}
+	}
+
+	volId, err := needle.NewVolumeId(r.FormValue("volume"))
+	if err != nil {
+		writeJsonError(w, r, http.StatusNotAcceptable, err)
+		return
+	}
+
+	rp := r.FormValue("replication")
+	if rp == "010" {
+		rp = "001" // 两副本
+	} else if rp == "020" {
+		rp = "002" // 三副本
+	}
+
+	err = vs.store.AddVolume(
+		volId,
+		r.FormValue("collection"),
+		vs.needleMapKind,
+		rp,
+		r.FormValue("ttl"),
+		preallocate,
+		0,
+		types.ToDiskType("hdd"),
+		vs.ldbTimout,
+	)
+
+	if err == nil {
+		writeJsonQuiet(w, r, http.StatusAccepted, map[string]string{"error": ""})
+	} else {
+		writeJsonError(w, r, http.StatusNotAcceptable, err)
+	}
+	glog.V(2).Infof("assign volume = %s, collection = %s , replication = %s, error = %v\n",
+		r.FormValue("volume"), r.FormValue("collection"), r.FormValue("replication"), err)
+
 }
