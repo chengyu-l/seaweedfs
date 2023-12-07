@@ -2,6 +2,8 @@ package command
 
 import (
 	"fmt"
+	"github.com/soheilhy/cmux"
+	"net"
 	"net/http"
 	httppprof "net/http/pprof"
 	"os"
@@ -248,8 +250,19 @@ func (v VolumeServerOptions) startVolumeServer(volumeFolders, maxVolumeCounts, v
 		*v.readBufferSizeMB,
 		*v.ldbTimeout,
 	)
+
+	listeningAddress := util.JoinHostPort(*v.bindIp, *v.port)
+	glog.V(0).Infof("Start Seaweed volume server %s at %s", util.Version(), listeningAddress)
+	listener, e := util.NewListener(listeningAddress, time.Duration(*v.idleConnectionTimeout)*time.Second)
+	if e != nil {
+		glog.Fatalf("Volume server listener error:%v", e)
+	}
+	cmux_ := cmux.New(listener)
+	grpcL := cmux_.MatchWithWriters(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"))
+	httpL := cmux_.Match(cmux.HTTP1Fast()) // serve http
+
 	// starting grpc server
-	grpcS := v.startGrpcService(volumeServer)
+	grpcS := v.startGrpcService(volumeServer, grpcL)
 
 	// starting public http server
 	var publicHttpDown httpdown.Server
@@ -261,7 +274,7 @@ func (v VolumeServerOptions) startVolumeServer(volumeFolders, maxVolumeCounts, v
 	}
 
 	// starting the cluster http server
-	clusterHttpServer := v.startClusterHttpService(volumeMux)
+	clusterHttpServer := v.startClusterHttpService(volumeMux, httpL)
 
 	grace.OnReload(volumeServer.LoadNewVolumes)
 
@@ -280,10 +293,7 @@ func (v VolumeServerOptions) startVolumeServer(volumeFolders, maxVolumeCounts, v
 		stopChan <- true
 	})
 
-	select {
-	case <-stopChan:
-	}
-
+	_ = cmux_.Serve()
 }
 
 func shutdown(publicHttpDown httpdown.Server, clusterHttpServer httpdown.Server, grpcS *grpc.Server, volumeServer *weed_server.VolumeServer) {
@@ -315,12 +325,8 @@ func (v VolumeServerOptions) isSeparatedPublicPort() bool {
 	return *v.publicPort != *v.port
 }
 
-func (v VolumeServerOptions) startGrpcService(vs volume_server_pb.VolumeServerServer) *grpc.Server {
-	grpcPort := *v.port
-	grpcL, err := util.NewListener(util.JoinHostPort(*v.bindIp, grpcPort), 0)
-	if err != nil {
-		glog.Fatalf("failed to listen on grpc port %d: %v", grpcPort, err)
-	}
+func (v VolumeServerOptions) startGrpcService(vs volume_server_pb.VolumeServerServer, grpcL net.Listener) *grpc.Server {
+
 	grpcS := pb.NewGrpcServer(security.LoadServerTLS(util.GetViper(), "grpc.volume"))
 	volume_server_pb.RegisterVolumeServerServer(grpcS, vs)
 	reflection.Register(grpcS)
@@ -351,20 +357,13 @@ func (v VolumeServerOptions) startPublicHttpService(handler http.Handler) httpdo
 	return publicHttpDown
 }
 
-func (v VolumeServerOptions) startClusterHttpService(handler http.Handler) httpdown.Server {
+func (v VolumeServerOptions) startClusterHttpService(handler http.Handler, httpL net.Listener) httpdown.Server {
 	var (
 		certFile, keyFile string
 	)
 	if viper.GetString("https.volume.key") != "" {
 		certFile = viper.GetString("https.volume.cert")
 		keyFile = viper.GetString("https.volume.key")
-	}
-
-	listeningAddress := util.JoinHostPort(*v.bindIp, *v.port)
-	glog.V(0).Infof("Start Seaweed volume server %s at %s", util.Version(), listeningAddress)
-	listener, e := util.NewListener(listeningAddress, time.Duration(*v.idleConnectionTimeout)*time.Second)
-	if e != nil {
-		glog.Fatalf("Volume server listener error:%v", e)
 	}
 
 	httpDown := httpdown.HTTP{
@@ -379,7 +378,7 @@ func (v VolumeServerOptions) startClusterHttpService(handler http.Handler) httpd
 		httpS.TLSConfig = security.LoadClientTLSHTTP(clientCertFile)
 	}
 
-	clusterHttpServer := httpDown.Serve(httpS, listener)
+	clusterHttpServer := httpDown.Serve(httpS, httpL)
 	go func() {
 		if e := clusterHttpServer.Wait(); e != nil {
 			glog.Fatalf("Volume server fail to serve: %v", e)
